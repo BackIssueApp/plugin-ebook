@@ -8,6 +8,14 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+## [0.1.1]
+
+### Fixed
+
+- **Cacheable cover redirects.** The per-issue cover route's redirect now carries
+  a day of `Cache-Control`, so browsers stop re-resolving every cover's redirect
+  hop on each library view — covers appear noticeably faster on revisits.
+
 ## [0.1.0]
 
 - **On-demand (file-less) libraries.** A registered remote book source can be

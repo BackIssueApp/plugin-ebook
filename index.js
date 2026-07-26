@@ -138,7 +138,8 @@ export default function register(api) {
   api.registerRoute('get', '/api/ebooks/issue/:id/cover', (req, res) => {
     const c = store.cover(Number(req.params.id));
     if (!c) return res.status(404).end();
-    if (c.thumbnail) return res.redirect(302, c.thumbnail);
+    // Cacheable redirect — spares each card the extra round-trip on revisits.
+    if (c.thumbnail) { res.set('Cache-Control', 'private, max-age=86400'); return res.redirect(302, c.thumbnail); }
     res.set('Content-Type', c.cover_type);
     res.set('Cache-Control', 'private, max-age=86400');
     res.send(c.cover);
