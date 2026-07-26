@@ -1,0 +1,41 @@
+# Publish a plugin bundle as a GitHub Release whenever a version tag is pushed.
+# The BackIssue plugin catalog reads each repo's latest release, so:
+#   npm version patch  (or edit package.json version)
+#   git tag v1.2.3 && git push origin v1.2.3
+# builds <name>.zip and attaches it — the catalog picks it up automatically.
+# Release notes come from the tagged version's CHANGELOG.md section (falling
+# back to the package description if the section is missing).
+name: Release bundle
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build plugin bundle
+        run: |
+          name=$(node -p "require('./package.json').name")
+          git archive --format=zip -o "$name.zip" "$GITHUB_REF_NAME"
+          echo "ASSET=$name.zip" >> "$GITHUB_ENV"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          notes=$(awk -v ver="$ver" '
+            /^## \[/ { if (found) exit; if (index($0, "[" ver "]")) { found=1; next } }
+            found' CHANGELOG.md 2>/dev/null || true)
+          [ -n "$(echo "$notes" | tr -d '[:space:]')" ] || \
+            notes=$(node -p "require('./package.json').description || 'BackIssue plugin bundle'")
+          gh release create "$GITHUB_REF_NAME" "$ASSET" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "$notes" \
+            --repo "$GITHUB_REPOSITORY"
