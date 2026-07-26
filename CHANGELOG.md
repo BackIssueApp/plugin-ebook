@@ -8,8 +8,10 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
-- **On-demand (file-less) libraries.** A registered remote book source (e.g.
-  Book Warehouse) can be synced into a Books library as browsable, metadata-only
+## [0.1.0]
+
+- **On-demand (file-less) libraries.** A registered remote book source can be
+  synced into a Books library as browsable, metadata-only
   entries — covers and details, but **no files downloaded**. Each book's EPUB is
   fetched the first time someone opens it to read (cache-on-read) and served
   from disk on every open after that; simultaneous opens of the same book share
