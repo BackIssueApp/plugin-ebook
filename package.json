@@ -1,6 +1,6 @@
 {
   "name": "ebooks",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Ebook library: a Books library type for EPUB/PDF — books catalog as regular library series with embedded + enriched metadata, ebook files in the Import tool, and an in-browser EPUB reader with per-user progress",
   "type": "module",
   "private": true,

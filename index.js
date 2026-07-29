@@ -143,7 +143,7 @@ export default function register(api) {
     res.set('Content-Type', c.cover_type);
     res.set('Cache-Control', 'private, max-age=86400');
     res.send(c.cover);
-  }, { access: CAN_USE });
+  }, { access: CAN_USE, basicAuth: true }); // basicAuth: OPDS feeds link covers here — external readers need the 401 challenge
 
   // Stream a book file inline (browser PDF/EPUB viewer) or, with ?dl=1, as an
   // attachment. res.sendFile handles Range/ETag for us.
@@ -159,6 +159,11 @@ export default function register(api) {
   };
 
   // GET /api/ebooks/issue/:id/file[?dl=1] — the book file itself.
+  //   basicAuth (here + cover): OPDS acquisition/image links point at these
+  //   routes. An OPDS reader's download manager waits for a WWW-Authenticate
+  //   challenge before attaching Basic credentials — without it, book
+  //   downloads die on a bare 401 (KyBook et al.) even though the /api/opds
+  //   catalog itself authenticates fine.
   //   • a local file already on disk → served straight away;
   //   • a file-less REMOTE entry → materialized on demand (download the EPUB/PDF
   //     into the library folder via its registered source, record the path, then
@@ -183,7 +188,7 @@ export default function register(api) {
       return serveBookFile(req, res, f.format, result.path);
     }
     return res.status(404).json({ error: 'file missing on disk' });
-  }, { access: CAN_USE });
+  }, { access: CAN_USE, basicAuth: true });
 
   // Reading progress: locator is the foliate CFI (opaque to the server),
   // fraction the 0..1 position. The client debounces; the server just upserts.

@@ -8,6 +8,17 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-07-28
+
+### Fixed
+
+- **Book downloads from OPDS readers no longer fail with 401.** The OPDS
+  catalog's acquisition and cover links point at this plugin's file/cover
+  routes, which answered an unauthenticated request with a bare 401 — no
+  `WWW-Authenticate` challenge — so OPDS readers (KyBook and others) that
+  wait for the challenge before sending credentials could browse the catalog
+  but never download a book. Both routes now advertise the Basic challenge.
+
 ## [0.1.1]
 
 ### Fixed
