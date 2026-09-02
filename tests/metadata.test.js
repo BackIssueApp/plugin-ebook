@@ -146,3 +146,43 @@ test('matchBookAcross: preferred source wins; falls back to the next on miss/err
   const m4 = await matchBookAcross([src([bwHit], { avail: false }), src([RESULT])], noIsbnBook);
   assert.equal(m4.match_id, 'gb-1');
 });
+
+// ---- Hardcover enrichment ----------------------------------------------------
+
+test('search and volume ask the service for hardcover enrichment', async () => {
+  const fetchImpl = mockFetch(() => ({ results: [], book: null }));
+  const c = makeBooksClient({ metadataInstanceKey: 'k' }, { fetchImpl });
+  await c.search('Dune', 5);
+  await c.volume('gb-1');
+  assert.ok(fetchImpl.calls[0].url.includes('enrich=hardcover'), fetchImpl.calls[0].url);
+  assert.ok(fetchImpl.calls[1].url.includes('enrich=hardcover'), fetchImpl.calls[1].url);
+});
+
+test('mergeMatch takes series (with position) from the enrichment', () => {
+  const enriched = {
+    ...RESULT,
+    hardcover: {
+      series: [
+        { name: 'Dune Chronicles', position: 1 },
+        { name: 'Dune Universe', position: 1 },
+      ],
+      rating: 4.25,
+    },
+  };
+  const m = mergeMatch({ ...BOOK, series: null }, enriched, 'isbn');
+  assert.equal(m.series_name, 'Dune Chronicles', 'first membership wins — the shelf needs one');
+  assert.equal(m.series_index, 1);
+});
+
+test('mergeMatch never overrides a series the file itself declares', () => {
+  const enriched = { ...RESULT, hardcover: { series: [{ name: 'Dune Chronicles', position: 1 }] } };
+  const m = mergeMatch({ ...BOOK, series: 'My Own Calibre Series' }, enriched, 'isbn');
+  assert.equal(m.series_name, undefined, 'embedded calibre metadata is the user\'s own data');
+});
+
+test('mergeMatch survives an unenriched or malformed result', () => {
+  assert.equal(mergeMatch(BOOK, RESULT, 'isbn').series_name, undefined);
+  assert.equal(mergeMatch(BOOK, { ...RESULT, hardcover: null }, 'isbn').series_name, undefined);
+  assert.equal(mergeMatch(BOOK, { ...RESULT, hardcover: { series: [] } }, 'isbn').series_name, undefined);
+  assert.equal(mergeMatch(BOOK, { ...RESULT, hardcover: { series: [{ name: '  ' }] } }, 'isbn').series_name, undefined);
+});

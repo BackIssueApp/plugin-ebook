@@ -90,6 +90,12 @@ export function openEbooksStore(dbPath) {
   const efCols = db.prepare("SELECT name FROM pragma_table_info('ebooks_files')").all().map((r) => r.name);
   if (!efCols.includes('source')) db.exec('ALTER TABLE ebooks_files ADD COLUMN source TEXT');
   if (!efCols.includes('remote_id')) db.exec('ALTER TABLE ebooks_files ADD COLUMN remote_id TEXT');
+  // Series learned from a metadata match (Hardcover enrichment) rather than
+  // from the file's own calibre metadata. Persisted so a rescan — which sees
+  // no embedded series — regroups the book the same way instead of scattering
+  // it back into standalones.
+  if (!efCols.includes('match_series')) db.exec('ALTER TABLE ebooks_files ADD COLUMN match_series TEXT');
+  if (!efCols.includes('match_series_index')) db.exec('ALTER TABLE ebooks_files ADD COLUMN match_series_index REAL');
   db.exec('CREATE INDEX IF NOT EXISTS idx_ebooks_files_remote ON ebooks_files (source, remote_id)');
 
   const seriesByUrl = (url) => db.prepare('SELECT * FROM series WHERE url=?').get(url);
@@ -113,6 +119,9 @@ export function openEbooksStore(dbPath) {
       authors: authorsOf(s), isbn: row.isbn,
       description: isStandalone(s) ? (s?.description || null) : null,
       language: row.language,
+      // The series this book already belongs to (null when it stands alone) —
+      // a match must never override a grouping the file itself declared.
+      series: isStandalone(s) ? null : (s?.title || null),
     };
   }
 
@@ -128,6 +137,15 @@ export function openEbooksStore(dbPath) {
     catalogFile({ libraryId, path: p, format, size, mtime, meta }) {
       const authors = (meta.authors || []).filter(Boolean);
       const byline = authors.join(', ') || null;
+      // A series the file itself declares always wins. Failing that, reuse the
+      // series a previous match assigned — otherwise every rescan would undo
+      // the grouping (the EPUB still has no series of its own).
+      if (!meta.series) {
+        const learned = db.prepare('SELECT match_series, match_series_index FROM ebooks_files WHERE path=?').get(p);
+        if (learned?.match_series) {
+          meta = { ...meta, series: learned.match_series, series_index: learned.match_series_index ?? undefined };
+        }
+      }
       const standalone = !meta.series;
       const url = seriesUrlFor(libraryId, meta);
       const tx = db.transaction(() => {
@@ -481,6 +499,33 @@ export function openEbooksStore(dbPath) {
         // cover route; the series cover fills in from it when still blank.
         if (merged.thumbnail && !series.cover_url) {
           db.prepare('UPDATE series SET cover_url=? WHERE id=?').run(`/api/ebooks/issue/${issueId}/cover`, series.id);
+        }
+        // Series learned from the match (Hardcover knows series; the file's
+        // own metadata often doesn't). Only for books that are currently
+        // STANDALONE — a series the file declares itself is authoritative and
+        // is never overridden. Runs last so the field updates above still
+        // apply to the row this may replace.
+        if (merged.series_name && standalone) {
+          db.prepare(`UPDATE ebooks_files SET match_series=?, match_series_index=? WHERE issue_id=?`)
+            .run(merged.series_name, Number.isFinite(merged.series_index) ? merged.series_index : null, issueId);
+          const targetUrl = seriesUrlFor(series.library_id, { series: merged.series_name });
+          db.prepare(`INSERT INTO series (title, url, publisher, type, library_id)
+              VALUES (?,?,?,'ebook',?)
+              ON CONFLICT(url) DO UPDATE SET type='ebook', library_id=excluded.library_id`)
+            .run(merged.series_name, targetUrl, series.publisher || null, series.library_id);
+          const target = seriesByUrl(targetUrl);
+          if (target && target.id !== series.id) {
+            db.prepare('UPDATE issues SET series_id=?, issue_number=? WHERE id=?')
+              .run(target.id, indexNumber(merged.series_index), issueId);
+            // Carry the cover over when the series shelf has none yet.
+            if (!target.cover_url && (series.cover_url || merged.thumbnail)) {
+              db.prepare('UPDATE series SET cover_url=? WHERE id=?')
+                .run(series.cover_url || `/api/ebooks/issue/${issueId}/cover`, target.id);
+            }
+            // The standalone row this book left behind is now empty — prune it.
+            const left = db.prepare('SELECT COUNT(*) n FROM issues WHERE series_id=?').get(series.id).n;
+            if (!left) db.prepare("DELETE FROM series WHERE id=? AND url LIKE 'ebook:%'").run(series.id);
+          }
         }
       });
       tx();

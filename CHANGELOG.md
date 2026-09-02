@@ -8,6 +8,18 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-09-02
+
+### Added
+
+- **Books group into series automatically, even when the file doesn't say so.**
+  Ebook files carry series information only when someone (usually calibre) put
+  it there; everything else became a shelf of one. The metadata service now
+  supplies the series — and the book's position in it — so matched books are
+  grouped onto a single series shelf in reading order. A series the file
+  declares itself is still authoritative and is never overridden, and the
+  learned grouping survives a rescan.
+
 ## [0.1.2] — 2026-07-28
 
 ### Fixed

@@ -2,7 +2,8 @@
 //
 //   GET <base>/books/search?q=<text>&limit=N → { results: [{ id, title,
 //       subtitle, authors[], description, publisher, published_date,
-//       isbn_10, isbn_13, page_count, categories[], language, thumbnail }] }
+//       isbn_10, isbn_13, page_count, categories[], language, thumbnail,
+//       hardcover?: { series: [{ name, position }], rating, tags[] } }] }
 //   GET <base>/books/volume/<id>             → { book: {same shape} }
 //
 // <base> is the app's metadata endpoint (the cvBaseUrl setting, which already
@@ -66,12 +67,16 @@ export function makeBooksClient(config, { fetchImpl } = {}) {
     },
     async search(q, limit = 5) {
       if (!key()) return null;
-      const u = `${base()}/books/search?q=${encodeURIComponent(q)}&limit=${limit}`;
+      // enrich=hardcover: the service attaches series (with position) and
+      // community data where it has them. Additive — an older service that
+      // doesn't know the param simply returns the same results unenriched.
+      const u = `${base()}/books/search?q=${encodeURIComponent(q)}&limit=${limit}&enrich=hardcover`;
       return (await getJson(u))?.results || [];
     },
     async volume(id) {
       if (!key()) return null;
-      return (await getJson(`${base()}/books/volume/${encodeURIComponent(id)}`))?.book || null;
+      const u = `${base()}/books/volume/${encodeURIComponent(id)}?enrich=hardcover`;
+      return (await getJson(u))?.book || null;
     },
   };
 }
@@ -121,7 +126,28 @@ export function mergeMatch(book, result, confidence) {
   }
   if (!book.authors?.length && Array.isArray(result.authors) && result.authors.length) out.authors = result.authors;
   if (!book.isbn && (result.isbn_13 || result.isbn_10)) out.isbn = result.isbn_13 || result.isbn_10;
+  // Series from the enrichment — the field the book catalog itself has no
+  // concept of. Only offered when the FILE declares no series of its own
+  // (embedded calibre metadata is the user's own data and always wins), and
+  // only the first membership: a book can belong to several series
+  // ("Stormlight Archive #1" and "The Cosmere #7") and the shelf needs one.
+  const hcSeries = pickSeries(result);
+  if (hcSeries && !book.series) {
+    out.series_name = hcSeries.name;
+    if (Number.isFinite(hcSeries.position)) out.series_index = hcSeries.position;
+  }
   return out;
+}
+
+/** First usable {name, position} from a result's Hardcover enrichment. */
+export function pickSeries(result) {
+  const list = result?.hardcover?.series;
+  if (!Array.isArray(list)) return null;
+  for (const s of list) {
+    const name = String(s?.name || '').trim();
+    if (name) return { name, position: Number(s.position) };
+  }
+  return null;
 }
 
 /** One book, end to end: search (ISBN first, else title+author), choose,

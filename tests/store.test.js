@@ -167,3 +167,66 @@ test('applyMatch folds service data into the catalog; misses are marked checked'
     assert.equal(store.unmatched().length, 0);
   } finally { rm(); }
 });
+
+test('applyMatch: a match-supplied series regroups standalone books into one shelf', () => {
+  const { p, store, libId, rm } = setup();
+  try {
+    // Two books with NO calibre series — today they each become a standalone
+    // shelf, which is the gap Hardcover enrichment closes.
+    const bare = (title) => ({
+      title, title_source: 'embedded', authors: ['Brandon Sanderson'],
+      series: null, series_index: null, isbn: null,
+      description: null, language: 'en', cover: null, cover_type: null,
+    });
+    const a = store.catalogFile({ libraryId: libId, path: file(p, 'twok.epub'), format: 'epub', size: 100, mtime: 1, meta: bare('The Way of Kings') });
+    const b = store.catalogFile({ libraryId: libId, path: file(p, 'wor.epub'), format: 'epub', size: 100, mtime: 1, meta: bare('Words of Radiance') });
+    assert.notEqual(a.seriesId, b.seriesId, 'they start as separate standalone shelves');
+
+    store.applyMatch(a.issueId, { match_id: 'hc-1', match_confidence: 'isbn', series_name: 'The Stormlight Archive', series_index: 1 });
+    store.applyMatch(b.issueId, { match_id: 'hc-2', match_confidence: 'isbn', series_name: 'The Stormlight Archive', series_index: 2 });
+
+    const rows = store.db.prepare(`SELECT i.issue_number, s.title AS series_title, s.id AS sid
+      FROM issues i JOIN series s ON s.id = i.series_id
+      WHERE i.id IN (?, ?) ORDER BY i.issue_number`).all(a.issueId, b.issueId);
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].series_title, 'The Stormlight Archive');
+    assert.equal(rows[1].series_title, 'The Stormlight Archive');
+    assert.equal(rows[0].sid, rows[1].sid, 'both books now sit on ONE series shelf');
+    assert.deepEqual(rows.map((r) => r.issue_number), ['1', '2'], 'ordered by series position');
+
+    // The standalone rows they left behind are pruned, not orphaned.
+    const orphans = store.db.prepare("SELECT COUNT(*) n FROM series WHERE id IN (?, ?)").get(a.seriesId, b.seriesId).n;
+    assert.equal(orphans, 0, 'empty standalone shelves are cleaned up');
+  } finally { rm(); }
+});
+
+test('a match-assigned series survives a rescan (the file still has no series)', () => {
+  const { p, store, libId, rm } = setup();
+  try {
+    const meta = {
+      title: 'The Way of Kings', title_source: 'embedded', authors: ['Brandon Sanderson'],
+      series: null, series_index: null, isbn: null,
+      description: null, language: 'en', cover: null, cover_type: null,
+    };
+    const a = store.catalogFile({ libraryId: libId, path: file(p, 'twok.epub'), format: 'epub', size: 100, mtime: 1, meta });
+    store.applyMatch(a.issueId, { match_id: 'hc-1', match_confidence: 'isbn', series_name: 'The Stormlight Archive', series_index: 1 });
+
+    // Rescan the same file: its EPUB still declares no series, so without the
+    // remembered grouping it would scatter back into a standalone shelf.
+    const again = store.catalogFile({ libraryId: libId, path: file(p, 'twok.epub'), format: 'epub', size: 100, mtime: 2, meta });
+    const s = store.db.prepare('SELECT title FROM series WHERE id=?').get(again.seriesId);
+    assert.equal(s.title, 'The Stormlight Archive', 'rescan keeps the learned series');
+    const n = store.db.prepare('SELECT issue_number FROM issues WHERE id=?').get(again.issueId).issue_number;
+    assert.equal(n, '1', 'and its position');
+  } finally { rm(); }
+});
+
+test('applyMatch never moves a book that already has its own calibre series', () => {
+  const { p, store, libId, rm } = setup();
+  try {
+    const one = store.catalogFile({ libraryId: libId, path: file(p, 'me1.epub'), format: 'epub', size: 100, mtime: 1, meta: ME('The Fellowship', 1) });
+    store.applyMatch(one.issueId, { match_id: 'hc-9', match_confidence: 'isbn', series_name: 'Some Other Series', series_index: 7 });
+    const s = store.db.prepare('SELECT s.title FROM issues i JOIN series s ON s.id=i.series_id WHERE i.id=?').get(one.issueId);
+    assert.equal(s.title, 'Middle Earth', 'the file\'s own series is authoritative');
+  } finally { rm(); }
+});
