@@ -8,6 +8,16 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-09-02
+
+### Fixed
+
+- **Series grouping now actually reaches books.** The match path reads search
+  results, which carry only enrichment the service already had cached — so on
+  a cold cache no book ever gained a series. A matched book with no series of
+  its own now resolves its enrichment directly (one cached lookup by ISBN),
+  and books that are already grouped skip the call entirely.
+
 ## [0.1.3] — 2026-09-02
 
 ### Added

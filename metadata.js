@@ -78,6 +78,17 @@ export function makeBooksClient(config, { fetchImpl } = {}) {
       const u = `${base()}/books/volume/${encodeURIComponent(id)}?enrich=hardcover`;
       return (await getJson(u))?.book || null;
     },
+    /** Enrichment for ONE book by ISBN-13. Search results only carry
+     *  enrichment the service already had cached, so a match needs this to
+     *  resolve series on a cold cache. Null on an older service that has no
+     *  such route — enrichment is optional, matching still works. */
+    async enrich(isbn13) {
+      if (!key()) return null;
+      try {
+        const u = `${base()}/books/enrich?isbn=${encodeURIComponent(isbn13)}`;
+        return (await getJson(u))?.hardcover || null;
+      } catch { return null; }
+    },
   };
 }
 
@@ -156,13 +167,27 @@ export async function matchBook(client, book) {
   if (!client.available()) return null;
   let results = null;
   if (book.isbn) results = await client.search(book.isbn, 5);
-  const choice1 = chooseMatch(book, results || []);
-  if (choice1) return mergeMatch(book, choice1.result, choice1.confidence);
-  const q = [book.title, book.authors?.[0]].filter(Boolean).join(' ');
-  if (!q) return null;
-  results = await client.search(q, 5);
-  const choice = chooseMatch(book, results || []);
-  return choice ? mergeMatch(book, choice.result, choice.confidence) : null;
+  let choice = chooseMatch(book, results || []);
+  if (!choice) {
+    const q = [book.title, book.authors?.[0]].filter(Boolean).join(' ');
+    if (!q) return null;
+    results = await client.search(q, 5);
+    choice = chooseMatch(book, results || []);
+  }
+  if (!choice) return null;
+  return mergeMatch(book, await withEnrichment(client, book, choice.result), choice.confidence);
+}
+
+/** Resolve the chosen match's enrichment when it can actually change the
+ *  outcome: the book has no series of its own, the result carries an ISBN-13,
+ *  and the search didn't already come back enriched. One cheap cached call —
+ *  skipped entirely for books that are already grouped. */
+async function withEnrichment(client, book, result) {
+  if (book.series || result.hardcover !== undefined || !client.enrich) return result;
+  const isbn = stripIsbn(result.isbn_13);
+  if (isbn.length !== 13) return result;
+  const hardcover = await client.enrich(isbn);
+  return hardcover ? { ...result, hardcover } : result;
 }
 
 /** Try each source in order (plugin sources first, hosted fallback last) and

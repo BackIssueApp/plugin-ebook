@@ -49,8 +49,11 @@ test('ISBN hit: searched first, matched by ISBN equality, key + base wired corre
     const merged = await matchBook(client, BOOK);
     assert.equal(merged.match_id, 'gb-1');
     assert.equal(merged.match_confidence, 'isbn');
-    assert.equal(fetchImpl.calls.length, 1, 'ISBN query only — no title fallback needed');
-    const call = fetchImpl.calls[0];
+    // One SEARCH only — no title fallback. (A separate enrich call may follow
+    // for a book with no series of its own; it isn't a second search.)
+    const searches = fetchImpl.calls.filter((c) => c.url.includes('/books/search'));
+    assert.equal(searches.length, 1, 'ISBN query only — no title fallback needed');
+    const call = searches[0];
     assert.ok(call.url.startsWith('https://meta.example/api/books/search?q=9780441172719&'),
       'env override base + /books/… (trailing slash stripped); settings cvBaseUrl ignored');
     assert.equal(call.opts.headers['x-api-key'], 'inst-key-1');
@@ -185,4 +188,39 @@ test('mergeMatch survives an unenriched or malformed result', () => {
   assert.equal(mergeMatch(BOOK, { ...RESULT, hardcover: null }, 'isbn').series_name, undefined);
   assert.equal(mergeMatch(BOOK, { ...RESULT, hardcover: { series: [] } }, 'isbn').series_name, undefined);
   assert.equal(mergeMatch(BOOK, { ...RESULT, hardcover: { series: [{ name: '  ' }] } }, 'isbn').series_name, undefined);
+});
+
+test('matchBook resolves enrichment for the chosen match (search alone is cache-only)', async () => {
+  // The bug this guards: search results carry enrichment only if the service
+  // already had it cached, so on a cold cache a match would never gain series.
+  const fetchImpl = mockFetch((url) => {
+    if (url.includes('/books/enrich')) {
+      return { hardcover: { series: [{ name: 'Dune Chronicles', position: 1 }] } };
+    }
+    return { results: [RESULT] }; // unenriched, as a cold cache returns
+  });
+  const c = makeBooksClient({ metadataInstanceKey: 'k' }, { fetchImpl });
+  const m = await matchBook(c, { ...BOOK, series: null });
+  assert.equal(m.series_name, 'Dune Chronicles');
+  assert.equal(m.series_index, 1);
+  assert.ok(fetchImpl.calls.some((x) => x.url.includes('/books/enrich?isbn=9780441172719')), 'asked by ISBN');
+});
+
+test('matchBook skips the enrichment call when it cannot help', async () => {
+  const fetchImpl = mockFetch(() => ({ results: [RESULT] }));
+  const c = makeBooksClient({ metadataInstanceKey: 'k' }, { fetchImpl });
+  // Already grouped by its own calibre metadata → nothing to gain.
+  await matchBook(c, { ...BOOK, series: 'Middle Earth' });
+  assert.ok(!fetchImpl.calls.some((x) => x.url.includes('/books/enrich')), 'no wasted call');
+});
+
+test('matchBook still matches when the service has no enrich route', async () => {
+  const fetchImpl = mockFetch((url) => {
+    if (url.includes('/books/enrich')) throw new Error('404');
+    return { results: [RESULT] };
+  });
+  const c = makeBooksClient({ metadataInstanceKey: 'k' }, { fetchImpl });
+  const m = await matchBook(c, { ...BOOK, series: null });
+  assert.equal(m.match_id, 'gb-1', 'the match survives; enrichment is optional');
+  assert.equal(m.series_name, undefined);
 });
