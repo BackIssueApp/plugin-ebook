@@ -202,6 +202,35 @@ export default function register(api) {
     res.json({ ok: true });
   }, { access: CAN_USE });
 
+  // ---- Bookmarks -------------------------------------------------------------
+  // A place in a book, kept per user. The position is the foliate CFI locator
+  // (opaque here, same as progress), so a bookmark reopens exactly where it was
+  // made regardless of font size or window width.
+  api.registerRoute('get', '/api/ebooks/issue/:id/bookmarks', (req, res) => {
+    res.json({ bookmarks: store.listBookmarks(uid(req), Number(req.params.id)) });
+  }, { access: CAN_USE });
+  api.registerRoute('post', '/api/ebooks/issue/:id/bookmarks', (req, res) => {
+    const f = fileOr404(req, res);
+    if (!f) return;
+    try { res.json(store.addBookmark(uid(req), f.issue_id, req.body || {})); }
+    catch (e) { res.status(400).json({ error: String(e?.message || e) }); }
+  }, { access: CAN_USE });
+  api.registerRoute('delete', '/api/ebooks/bookmarks/:bid', (req, res) => {
+    store.deleteBookmark(uid(req), Number(req.params.bid));
+    res.json({ ok: true });
+  }, { access: CAN_USE });
+
+  // ---- Reading stats ----------------------------------------------------------
+  api.registerRoute('get', '/api/ebooks/stats', (req, res) => res.json(store.stats(uid(req))), { access: CAN_USE });
+
+  // ---- Per-user home rail visibility (synced across devices) ------------------
+  api.registerRoute('get', '/api/ebooks/home-prefs', (req, res) => {
+    res.json(store.homePrefs(uid(req)));
+  }, { access: CAN_USE });
+  api.registerRoute('post', '/api/ebooks/home-prefs', (req, res) => {
+    res.json(store.setHomePrefs(uid(req), req.body || {}));
+  }, { access: CAN_USE });
+
   // GET /api/ebooks/issue/:id/details — the detail sheet's Details grid needs
   // the plugin-private ebooks_files columns (language/ISBN/added date) that
   // core's issue payload has no home for. One row per file/issue, tiny.

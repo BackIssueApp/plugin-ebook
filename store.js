@@ -84,6 +84,25 @@ export function openEbooksStore(dbPath) {
       total       INTEGER,
       updated_at  TEXT
     );
+    -- Per-user bookmarks. An ebook position is a foliate CFI locator (opaque to
+    -- the server, exactly like reading progress); the fraction rides along so the
+    -- list can be ordered and shown as a percentage without parsing the CFI.
+    CREATE TABLE IF NOT EXISTS ebooks_bookmarks (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL DEFAULT 0,
+      issue_id   INTEGER NOT NULL,
+      locator    TEXT NOT NULL,
+      fraction   REAL NOT NULL DEFAULT 0,
+      note       TEXT,
+      created_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_ebbookmarks ON ebooks_bookmarks (user_id, issue_id);
+    -- Per-user visibility of each ebook home rail (both default on).
+    CREATE TABLE IF NOT EXISTS ebooks_home_prefs (
+      user_id       INTEGER PRIMARY KEY,
+      show_continue INTEGER NOT NULL DEFAULT 1,
+      show_new      INTEGER NOT NULL DEFAULT 1
+    );
   `);
   // Migrate a pre-remote ebooks_files table in place — the CREATE above only
   // shapes fresh DBs, so add the file-less-entry columns to existing ones.
@@ -420,6 +439,56 @@ export function openEbooksStore(dbPath) {
         .run(userId, issueId, locator == null ? null : String(locator),
           Math.min(1, Math.max(0, Number(fraction) || 0)));
     },
+    // ---- bookmarks (per user, per book) ----
+    listBookmarks(userId, issueId) {
+      return db.prepare(`SELECT id, locator, fraction, note, created_at
+        FROM ebooks_bookmarks WHERE user_id=? AND issue_id=? ORDER BY fraction, id`)
+        .all(userId || 0, Number(issueId));
+    },
+    addBookmark(userId, issueId, { locator, fraction, note } = {}) {
+      const loc = String(locator || '').trim();
+      if (!loc) throw new Error('a bookmark needs a position');
+      const info = db.prepare(`INSERT INTO ebooks_bookmarks (user_id, issue_id, locator, fraction, note, created_at)
+        VALUES (?,?,?,?,?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))`)
+        .run(userId || 0, Number(issueId), loc,
+          Math.min(1, Math.max(0, Number(fraction) || 0)), note ? String(note).slice(0, 500) : null);
+      return { id: info.lastInsertRowid };
+    },
+    deleteBookmark(userId, id) {
+      db.prepare('DELETE FROM ebooks_bookmarks WHERE id=? AND user_id=?').run(Number(id), userId || 0);
+    },
+
+    // ---- per-user reading stats ----
+    // `finished` uses the same 0.98 threshold the reading shell paints with, so
+    // this always agrees with the icons on the shelf. Pages are an ESTIMATE
+    // (fraction x the file's page count) — an EPUB has no fixed page count, so
+    // it is reported as approximate rather than pretending otherwise.
+    stats(userId) {
+      const r = db.prepare(`SELECT COUNT(*) started,
+          SUM(CASE WHEN fraction >= 0.98 THEN 1 ELSE 0 END) finished
+        FROM ebooks_progress WHERE user_id=? AND fraction > 0`).get(userId || 0);
+      const pages = db.prepare(`SELECT COALESCE(SUM(p.fraction * COALESCE(lf.page_count, 0)), 0) n
+        FROM ebooks_progress p
+        JOIN ebooks_files ef ON ef.issue_id = p.issue_id
+        JOIN library_files lf ON lf.path = ef.path
+       WHERE p.user_id=? AND p.fraction > 0`).get(userId || 0);
+      return { started: r.started || 0, finished: r.finished || 0, pages_estimate: Math.round(pages.n || 0) };
+    },
+
+    // ---- per-user home rail visibility (mirrors the audiobooks plugin) ----
+    homePrefs(userId) {
+      const r = db.prepare('SELECT * FROM ebooks_home_prefs WHERE user_id=?').get(userId || 0);
+      return { showContinue: r ? !!r.show_continue : true, showNew: r ? !!r.show_new : true };
+    },
+    setHomePrefs(userId, partial) {
+      const m = { ...this.homePrefs(userId), ...(partial || {}) };
+      db.prepare(`INSERT INTO ebooks_home_prefs (user_id, show_continue, show_new) VALUES (?,?,?)
+        ON CONFLICT(user_id) DO UPDATE SET
+          show_continue = excluded.show_continue, show_new = excluded.show_new`)
+        .run(userId || 0, m.showContinue ? 1 : 0, m.showNew ? 1 : 0);
+      return this.homePrefs(userId);
+    },
+
     /** All of one user's positions — the client paints row icons from this. */
     stateMap(userId) {
       const out = {};

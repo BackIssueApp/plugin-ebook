@@ -230,3 +230,67 @@ test('applyMatch never moves a book that already has its own calibre series', ()
     assert.equal(s.title, 'Middle Earth', 'the file\'s own series is authoritative');
   } finally { rm(); }
 });
+
+// ---- bookmarks, stats, home rail prefs ---------------------------------------
+
+test('bookmarks: per user, per book, ordered by position', () => {
+  const { p, store, libId, rm } = setup();
+  try {
+    const b = store.catalogFile({ libraryId: libId, path: file(p, 'dune.epub'), format: 'epub', size: 100, mtime: 1, meta: DUNE });
+    store.addBookmark(1, b.issueId, { locator: 'epubcfi(/6/14!/4/2)', fraction: 0.42, note: 'the spice' });
+    store.addBookmark(1, b.issueId, { locator: 'epubcfi(/6/4!/4/2)', fraction: 0.1 });
+    store.addBookmark(2, b.issueId, { locator: 'epubcfi(/6/20!/4/2)', fraction: 0.9 });
+
+    const mine = store.listBookmarks(1, b.issueId);
+    assert.deepEqual(mine.map((m) => m.fraction), [0.1, 0.42], 'ordered by position in the book');
+    assert.equal(mine[1].note, 'the spice');
+    assert.equal(store.listBookmarks(2, b.issueId).length, 1, 'another user sees only their own');
+
+    // Delete is scoped to the owner: user 2 cannot remove user 1's bookmark.
+    store.deleteBookmark(2, mine[0].id);
+    assert.equal(store.listBookmarks(1, b.issueId).length, 2, "another user's delete does nothing");
+    store.deleteBookmark(1, mine[0].id);
+    assert.equal(store.listBookmarks(1, b.issueId).length, 1);
+  } finally { rm(); }
+});
+
+test('bookmarks: a position is required', () => {
+  const { p, store, libId, rm } = setup();
+  try {
+    const b = store.catalogFile({ libraryId: libId, path: file(p, 'dune.epub'), format: 'epub', size: 100, mtime: 1, meta: DUNE });
+    assert.throws(() => store.addBookmark(1, b.issueId, { fraction: 0.5 }), /needs a position/);
+  } finally { rm(); }
+});
+
+test('stats: started/finished agree with the shelf, and page estimate is per user', () => {
+  const { p, store, libId, rm } = setup();
+  try {
+    const a = store.catalogFile({ libraryId: libId, path: file(p, 'a.epub'), format: 'epub', size: 100, mtime: 1, meta: DUNE });
+    const b = store.catalogFile({ libraryId: libId, path: file(p, 'b.epub'), format: 'epub', size: 100, mtime: 1, meta: { ...DUNE, title: 'Other' } });
+    store.db.prepare('UPDATE library_files SET page_count=300 WHERE path=?').run(file(p, 'a.epub'));
+    store.db.prepare('UPDATE library_files SET page_count=100 WHERE path=?').run(file(p, 'b.epub'));
+
+    assert.deepEqual(store.stats(1), { started: 0, finished: 0, pages_estimate: 0 }, 'a fresh user has nothing');
+
+    store.saveProgress(1, a.issueId, { locator: 'x', fraction: 0.5 });   // 150 of 300
+    store.saveProgress(1, b.issueId, { locator: 'y', fraction: 0.99 });  // finished, 99 of 100
+    const s = store.stats(1);
+    assert.equal(s.started, 2);
+    assert.equal(s.finished, 1, '0.99 counts as finished (the shelf uses 0.98)');
+    assert.equal(s.pages_estimate, 249);
+    assert.equal(store.stats(2).started, 0, "another user's reading is not counted");
+  } finally { rm(); }
+});
+
+test('home rail prefs: default on, merge partially, persist per user', () => {
+  const { store, rm } = setup();
+  try {
+    assert.deepEqual(store.homePrefs(1), { showContinue: true, showNew: true }, 'both rails default on');
+    assert.deepEqual(store.setHomePrefs(1, { showNew: false }), { showContinue: true, showNew: false },
+      'a partial update leaves the other rail alone');
+    assert.deepEqual(store.homePrefs(1), { showContinue: true, showNew: false }, 'and persists');
+    assert.deepEqual(store.homePrefs(2), { showContinue: true, showNew: true }, 'per user');
+    store.setHomePrefs(1, { showNew: true });
+    assert.deepEqual(store.homePrefs(1), { showContinue: true, showNew: true }, 'and can be turned back on');
+  } finally { rm(); }
+});

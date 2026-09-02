@@ -8,6 +8,23 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-09-02
+
+### Added
+
+- **Bookmarks.** Save your place in a book and jump back to it later. A
+  bookmark stores the exact position (not a page number), so it reopens on the
+  same words whatever the font size or window width. The reading shell gains a
+  bookmark button and a bookmarks drawer beside the contents drawer.
+- **Reading stats.** A new stats endpoint reports how many books you have
+  started, how many you have finished, and an approximate page count read.
+  Finished uses the same threshold the shelf paints with, so the numbers always
+  agree with the icons.
+- **Home rails.** Two book rails — **Continue reading** and **New books** —
+  now appear on the home screen alongside the comic and audiobook rails. Each
+  can be hidden from its ×, or toggled per user on the Profile page; the choice
+  is saved server-side so it follows the account rather than the browser.
+
 ## [0.1.4] — 2026-09-02
 
 ### Fixed

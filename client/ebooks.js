@@ -30,6 +30,164 @@
     // the page always has a view (it explains itself to roles without the
     // permission). On cores without the hook this is a no-op and the old
     // generic issue list renders instead.
+    // ---------- home rails ----------
+    // Two book rails in core's #home-plugin-rail slot, alongside the reader's
+    // comic shelves and the audiobook rails (each side owns a display:contents
+    // wrapper so they coexist). Visibility is per user and saved server-side,
+    // so it follows the account rather than the browser.
+    const EB_SHELVES = [
+      { key: 'eb-continue', pref: 'showContinue', title: 'Continue reading', facet: '{"status":"reading"}' },
+      { key: 'eb-new',      pref: 'showNew',      title: 'New books',        facet: null },
+    ];
+    let ebLibId;          // undefined = unresolved, null = none
+    let ebPrefs = null;
+    const ebShelfOn = (sh) => ((ebPrefs && sh.pref in ebPrefs) ? ebPrefs[sh.pref] !== false : true);
+
+    async function ebookLibId() {
+      if (ebLibId !== undefined) return ebLibId;
+      // Reuse the library list the SPA already fetched at boot; only a core too
+      // old to share it falls back to its own /api/status request.
+      if (api.libraries) {
+        for (let i = 0; i < 40; i++) {
+          const libs = api.libraries();
+          if (libs.length) { ebLibId = libs.find((l) => l.type === 'ebook')?.id ?? null; return ebLibId; }
+          await new Promise((r) => setTimeout(r, 250));
+        }
+      }
+      try {
+        const st = await api.get('/api/status');
+        ebLibId = (st.libraries || []).find((l) => l.type === 'ebook')?.id ?? null;
+      } catch { ebLibId = null; }
+      return ebLibId;
+    }
+
+    async function renderEbookRails() {
+      const slot = api.slot && api.slot('home-plugin-rail');
+      if (!slot) return;
+      const libId = await ebookLibId();
+      if (!libId) return;
+      try { ebPrefs = await api.get('/api/ebooks/home-prefs'); } catch { /* keep last/defaults */ }
+      syncEbookPrefs();
+      const shown = EB_SHELVES.filter(ebShelfOn);
+      const results = await Promise.all(shown.map((sh) => {
+        // counts=0: rails never show the filter chips' counts, so skip that
+        // pass server-side (it is the expensive half of a page request).
+        const q = '/api/collection?library=' + libId + '&limit=15&offset=0&sort=added&counts=0'
+          + (sh.facet ? '&facet=' + encodeURIComponent(sh.facet) : '');
+        return api.get(q)
+          .then((r) => ({ sh, items: Array.isArray(r) ? r : (r.rows || r.items || []) }))
+          .catch(() => ({ sh, items: [] }));
+      }));
+      const desired = [];
+      for (const { sh, items } of results) if (items.length) desired.push(buildEbRail(sh, items));
+      let wrap = slot.querySelector('#ebooks-home-rails');
+      if (!desired.length) { if (wrap) wrap.remove(); return; }
+      if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.id = 'ebooks-home-rails';
+        wrap.style.display = 'contents';
+        slot.appendChild(wrap);
+      }
+      // Reuse an unchanged rail node so the browser keeps scroll position and
+      // doesn't re-fetch covers on every poll.
+      const existing = new Map([...wrap.children].map((el) => [el.dataset.shelf, el]));
+      const finalNodes = desired.map((next) => {
+        const old = existing.get(next.dataset.shelf);
+        return old && old.innerHTML === next.innerHTML ? old : next;
+      });
+      const unchanged = finalNodes.length === wrap.children.length
+        && finalNodes.every((n, i) => n === wrap.children[i]);
+      if (!unchanged) wrap.replaceChildren(...finalNodes);
+    }
+
+    function buildEbRail(shelf, items) {
+      const sec = document.createElement('section');
+      sec.className = 'ab-rail';  // shares the rail styling with the audiobook rails
+      sec.dataset.shelf = shelf.key;
+      const head = document.createElement('div');
+      head.className = 'ab-rail__head';
+      const h = document.createElement('span');
+      h.className = 'ab-rail__title';
+      h.textContent = shelf.title;
+      const hide = document.createElement('button');
+      hide.className = 'ab-rail__hide';
+      hide.title = 'Hide this rail — turn it back on from your Profile';
+      hide.setAttribute('aria-label', 'Hide ' + shelf.title);
+      hide.innerHTML = icon('close', { size: 16 }) || '×';
+      hide.onclick = async () => {
+        try { ebPrefs = await api.post('/api/ebooks/home-prefs', { [shelf.pref]: false }); }
+        catch { /* retry on the next render */ }
+        renderEbookRails();
+      };
+      head.append(h, hide);
+      const track = document.createElement('div');
+      track.className = 'ab-rail__track';
+      for (const it of items) track.appendChild(ebCard(it));
+      sec.append(head, track);
+      return sec;
+    }
+
+    function ebCard(it) {
+      const el = document.createElement('button');
+      el.className = 'ab-rail__card';
+      el.title = it.title || '';
+      const cover = document.createElement('span');
+      cover.className = 'ab-rail__cover';
+      if (it.cover_url) {
+        const img = document.createElement('img');
+        img.src = it.cover_url;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.onerror = () => { img.style.visibility = 'hidden'; };
+        cover.appendChild(img);
+      }
+      const label = document.createElement('span');
+      label.className = 'ab-rail__label';
+      const b = document.createElement('b');
+      b.textContent = it.title || 'Untitled';
+      label.appendChild(b);
+      el.append(cover, label);
+      if (it.publisher) {
+        const sub = document.createElement('small');
+        sub.className = 'ab-rail__sub';
+        sub.textContent = it.publisher;
+        el.appendChild(sub);
+      }
+      el.onclick = () => { if (api.openSeries) api.openSeries(it.id); };
+      return el;
+    }
+
+    // Per-user rail toggles on the Profile page (mirrors the audiobook rails).
+    function syncEbookPrefs() {
+      const slot = api.slot && api.slot('profile-plugin-slot');
+      if (!slot) return;
+      let card = slot.querySelector('#ebooks-rails-prefs');
+      if (!card) {
+        card = document.createElement('section');
+        card.className = 'settings-section';
+        card.id = 'ebooks-rails-prefs';
+        card.innerHTML = '<p class="modal__subhead">Book rails</p>'
+          + '<p class="modal__note">Which book rails appear on your home screen.</p>'
+          + '<div class="ab-rails-prefs">'
+          + EB_SHELVES.map((sh) => '<label class="ab-rails-row"><input type="checkbox" data-pref="'
+            + sh.pref + '"> ' + esc(sh.title) + '</label>').join('')
+          + '</div>';
+        slot.appendChild(card);
+        card.querySelectorAll('input[data-pref]').forEach((cb) => {
+          cb.onchange = async () => {
+            try { ebPrefs = await api.post('/api/ebooks/home-prefs', { [cb.dataset.pref]: cb.checked }); }
+            catch { /* keep the UI as the user left it */ }
+            renderEbookRails();
+          };
+        });
+      }
+      for (const cb of card.querySelectorAll('input[data-pref]')) {
+        cb.checked = ebPrefs ? ebPrefs[cb.dataset.pref] !== false : true;
+      }
+    }
+
+    renderEbookRails();
+
     api.registerSeriesView && api.registerSeriesView({ type: 'ebook', render: renderBooksView });
 
     // Row actions, covers and the reading shell are pointless without the
@@ -146,6 +304,8 @@
           '<div class="ebr__title"></div>' +
           '<div class="ebr__count"></div>' +
           '<span class="ebr__spacer"></span>' +
+          '<button class="ebr__btn ebr-mark" title="Bookmark this place" aria-label="Bookmark this place">' + icon('plus') + '</button>' +
+          '<button class="ebr__btn ebr-marks" title="Bookmarks" aria-label="Bookmarks">' + icon('bookmark') + '</button>' +
           '<button class="ebr__btn ebr-toc" title="Contents" aria-label="Contents">' + icon('list') + '</button>' +
           '<button class="ebr__btn ebr-set" title="Display settings" aria-label="Display settings">' + icon('settings') + '</button>' +
         '</div>' +
@@ -171,6 +331,11 @@
         '<div class="ebr__toc">' +
           '<div class="ebr__tochead"><span>Contents</span> <button class="ebr__btn ebr-toc-close" aria-label="Close contents">' + icon('close') + '</button></div>' +
           '<div class="ebr__toc-list"></div>' +
+        '</div>' +
+        // Bookmarks reuse the contents panel's styling — same drawer, own list.
+        '<div class="ebr__toc ebr__toc--marks">' +
+          '<div class="ebr__tochead"><span>Bookmarks</span> <button class="ebr__btn ebr-marks-close" aria-label="Close bookmarks">' + icon('close') + '</button></div>' +
+          '<div class="ebr__marks-list"></div>' +
         '</div>';
       document.body.appendChild(el);
       return el;
@@ -236,8 +401,16 @@
       el.querySelector('.ebr-next').onclick = () => view()?.goRight();
       el.querySelector('.ebr__zone--left').onclick = () => view()?.goLeft();
       el.querySelector('.ebr__zone--right').onclick = () => view()?.goRight();
-      el.querySelector('.ebr-toc').onclick = () => el.querySelector('.ebr__toc').classList.toggle('is-open');
-      el.querySelector('.ebr-toc-close').onclick = () => el.querySelector('.ebr__toc').classList.remove('is-open');
+      el.querySelector('.ebr-toc').onclick = () => el.querySelector('.ebr__toc:not(.ebr__toc--marks)').classList.toggle('is-open');
+      el.querySelector('.ebr-toc-close').onclick = () => el.querySelector('.ebr__toc:not(.ebr__toc--marks)').classList.remove('is-open');
+      el.querySelector('.ebr-mark').onclick = addBookmarkHere;
+      el.querySelector('.ebr-marks').onclick = () => {
+        const panel = el.querySelector('.ebr__toc--marks');
+        const opening = !panel.classList.contains('is-open');
+        panel.classList.toggle('is-open');
+        if (opening) renderBookmarks();
+      };
+      el.querySelector('.ebr-marks-close').onclick = () => el.querySelector('.ebr__toc--marks').classList.remove('is-open');
       el.querySelector('.ebr-set').onclick = () => el.querySelector('.ebr__settings').classList.toggle('is-open');
       el.querySelector('.ebr__slider').oninput = (e) => view()?.goToFraction(parseFloat(e.target.value));
 
@@ -333,10 +506,69 @@
       el.querySelector('.ebr__loc').textContent =
         Math.round(frac * 100) + '%' + (detail?.tocItem?.label ? ' · ' + detail.tocItem.label : '');
       reader.pending = { locator: detail?.cfi || null, fraction: frac };
+      // `pending` is cleared once saved; `here` is the live position a
+      // bookmark is taken from.
+      reader.here = { locator: detail?.cfi || null, fraction: frac };
       states[reader.issue.id] = { fraction: frac };
       clearTimeout(reader.saveTimer);
       reader.saveTimer = setTimeout(flushProgress, 1200);
     }
+    // ---------- bookmarks ----------
+    // A bookmark is the foliate CFI of the current position, so reopening it
+    // lands on the same words regardless of font size or window width.
+    async function addBookmarkHere() {
+      if (!reader?.issue) return;
+      const at = reader.here || reader.pending;
+      if (!at?.locator) return api.toast('Nothing to bookmark yet — turn a page first.', 'info');
+      try {
+        await api.post('/api/ebooks/issue/' + reader.issue.id + '/bookmarks', {
+          locator: at.locator, fraction: at.fraction || 0,
+        });
+        api.toast('Bookmarked at ' + Math.round((at.fraction || 0) * 100) + '%', 'ok');
+        const panel = reader.el.querySelector('.ebr__toc--marks');
+        if (panel.classList.contains('is-open')) renderBookmarks();
+      } catch { api.toast('Could not save the bookmark.', 'error'); }
+    }
+
+    async function renderBookmarks() {
+      const wrap = reader?.el?.querySelector('.ebr__marks-list');
+      if (!wrap || !reader?.issue) return;
+      wrap.textContent = 'Loading…';
+      let marks = [];
+      try { marks = (await api.get('/api/ebooks/issue/' + reader.issue.id + '/bookmarks')).bookmarks || []; }
+      catch { wrap.textContent = 'Could not load bookmarks.'; return; }
+      if (!marks.length) {
+        wrap.innerHTML = '<div class="ebr__marks-empty">No bookmarks in this book yet. '
+          + 'Use the bookmark button to save your place.</div>';
+        return;
+      }
+      wrap.replaceChildren(...marks.map((m) => {
+        const row = document.createElement('div');
+        row.className = 'ebr__mark';
+        const go = document.createElement('button');
+        go.className = 'ebr__mark-go';
+        go.textContent = Math.round((m.fraction || 0) * 100) + '%' + (m.note ? ' · ' + m.note : '');
+        go.title = 'Jump to this bookmark';
+        go.onclick = () => {
+          reader.view?.goTo(m.locator).catch(() => api.toast('That bookmark could not be opened.', 'error'));
+          reader.el.querySelector('.ebr__toc--marks').classList.remove('is-open');
+        };
+        const del = document.createElement('button');
+        del.className = 'ebr__btn ebr__mark-del';
+        del.title = 'Remove this bookmark';
+        del.setAttribute('aria-label', 'Remove bookmark');
+        del.innerHTML = icon('trash', { size: 15 });
+        del.onclick = async () => {
+          try {
+            await fetch('/api/ebooks/bookmarks/' + m.id, { method: 'DELETE', headers: { 'content-type': 'application/json' } });
+            renderBookmarks();
+          } catch { api.toast('Could not remove the bookmark.', 'error'); }
+        };
+        row.append(go, del);
+        return row;
+      }));
+    }
+
     function flushProgress() {
       if (!reader || !reader.pending) return;
       const body = reader.pending;

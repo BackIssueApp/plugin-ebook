@@ -407,3 +407,17 @@ html:has(.ebr.is-open) { overscroll-behavior-y: none; }
   .ebs__hero { padding: 16px 14px; }
   .ebs__body { padding: 16px 14px 22px; }
 }
+
+/* Bookmarks drawer — shares the contents panel's frame (.ebr__toc), with its
+   own list: a jump button that fills the row, and a quiet delete beside it. */
+.ebr__marks-list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 10px; }
+.ebr__marks-empty { padding: 14px 6px; color: #9a94a6; font-size: 13px; line-height: 1.5; }
+.ebr__mark { display: flex; align-items: center; gap: 6px; }
+.ebr__mark-go {
+  flex: 1; min-width: 0; text-align: left; padding: 9px 10px; border: none; border-radius: 8px;
+  background: transparent; color: inherit; font: inherit; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ebr__mark-go:hover { background: #2a2a33; }
+.ebr__mark-del { flex: none; opacity: .55; }
+.ebr__mark-del:hover { opacity: 1; }
