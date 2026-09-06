@@ -421,3 +421,11 @@ html:has(.ebr.is-open) { overscroll-behavior-y: none; }
 .ebr__mark-go:hover { background: #2a2a33; }
 .ebr__mark-del { flex: none; opacity: .55; }
 .ebr__mark-del:hover { opacity: 1; }
+
+/* A remote copy the source could not serve: flagged before the tap, and the
+   reader's failure offers another copy of the same title. */
+.ebs__file.is-dead .ebs__file-name { color: var(--muted); }
+.ebs__file-flag { font: 600 9.5px var(--font-body, sans-serif); text-transform: uppercase; letter-spacing: .04em; color: var(--red, #ff5a52); border: 1px solid rgba(255,90,82,.33); background: rgba(255,90,82,.09); border-radius: 4px; padding: 2px 6px; margin-left: 6px; vertical-align: middle; }
+.ebs__file-dead { font-size: 11px; color: #ff8f6b; margin-top: 4px; line-height: 1.4; }
+.ebr__fail { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.ebr__alt { height: 34px; padding: 0 14px; border: none; background: var(--accent, #ff2d6f); color: #fff; border-radius: 8px; font: 600 12.5px var(--font-body, sans-serif); cursor: pointer; }

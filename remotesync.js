@@ -78,13 +78,25 @@ export async function runRemoteSync({
   stopFlag = false;
   Object.assign(remoteSyncState, {
     running: true, sourceId: sourceId || null, libraryId: lib.id, page: 0, total: 0,
-    created: 0, updated: 0, done: 0, current: null,
+    created: 0, updated: 0, pruned: 0, done: 0, current: null,
     startedAt: new Date().toISOString(), finishedAt: null, stoppedAt: null, error: null,
   });
   const stopRequested = () => stopFlag || (typeof shouldStop === 'function' && shouldStop());
   const emit = () => { if (typeof onProgress === 'function') onProgress(remoteSyncStatus()); };
 
   let claimed = 0; // NEW entries created this run (counts against `cap`)
+  // A re-imported book arrives next to its old record, whose file is usually
+  // the reason it was re-imported. When the source confirms the old copy is
+  // gone (404), drop it — otherwise the shelf shows the same book twice, one
+  // of them dead. Sources without a probe keep both.
+  const isGone = (r) => r?.status === 404 || r?.status === 410;
+  const pruneDeadTwins = async (src, remoteId) => {
+    if (typeof src.probe !== 'function' || typeof store.duplicateRemoteEntries !== 'function') return;
+    for (const twin of store.duplicateRemoteEntries(src.id, remoteId)) {
+      try { if (isGone(await src.probe(null, twin.remote_id))) { if (store.removeRemoteEntry(twin.issue_id)) remoteSyncState.pruned++; } }
+      catch { /* source unreachable right now: leave the twin alone */ }
+    }
+  };
   try {
     for (const src of chosen) {
       if (stopRequested()) break;
@@ -110,7 +122,7 @@ export async function runRemoteSync({
           remoteSyncState.current = { remote_id: b.remote_id, title: b.title || String(b.remote_id) };
           try {
             const { created } = store.catalogRemote({ libraryId: lib.id, source: src.id, remoteId: b.remote_id, meta: b });
-            if (created) { remoteSyncState.created++; claimed++; } else remoteSyncState.updated++;
+            if (created) { remoteSyncState.created++; claimed++; await pruneDeadTwins(src, b.remote_id); } else remoteSyncState.updated++;
             remoteSyncState.done++;
           } catch (e) {
             remoteSyncState.error = String(e?.message || e); // one bad entry never aborts the run
@@ -122,6 +134,22 @@ export async function runRemoteSync({
         // the page and the idempotent catalog absorbs the overlap.
         if (!interrupted) { store.setRemoteCursor(src.id, page + 1, remoteSyncState.total); page += 1; }
         else break;
+      }
+      // Entries an open attempt already proved dead, whose twin still serves:
+      // drop them now rather than waiting for a re-import to arrive.
+      if (!stopRequested() && typeof src.probe === 'function' && typeof store.unavailableWithTwin === 'function') {
+        const checked = new Set();
+        for (const d of store.unavailableWithTwin(src.id)) {
+          if (checked.has(d.issue_id)) continue;
+          checked.add(d.issue_id);
+          try {
+            const twin = await src.probe(null, d.twin_remote_id);
+            if (!(twin?.status >= 200 && twin?.status < 300)) continue;
+            const dead = await src.probe(null, d.remote_id);
+            if (isGone(dead)) { if (store.removeRemoteEntry(d.issue_id)) remoteSyncState.pruned++; }
+            else if (dead?.status >= 200 && dead?.status < 300) store.markAvailable?.(d.issue_id);
+          } catch { /* source unreachable: next time */ }
+        }
       }
     }
     if (stopRequested() && !remoteSyncState.stoppedAt) remoteSyncState.stoppedAt = new Date().toISOString();

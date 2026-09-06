@@ -313,8 +313,55 @@ test('bookInfoMap marks a file-less entry remote and a materialized one local', 
   const { store, libId, rm } = setup();
   try {
     const { issueId } = store.catalogRemote({ libraryId: libId, source: 'bw', remoteId: 'r1', meta: meta('r1') });
-    assert.deepEqual(store.bookInfoMap([issueId])[issueId], { format: 'epub', remote: true });
+    assert.deepEqual(store.bookInfoMap([issueId])[issueId], { format: 'epub', remote: true, unavailable: false, unavailableReason: null });
     store.materializedPath(issueId, '/tmp/r1.epub', 123, 1);
-    assert.deepEqual(store.bookInfoMap([issueId])[issueId], { format: 'epub', remote: false });
+    assert.deepEqual(store.bookInfoMap([issueId])[issueId], { format: 'epub', remote: false, unavailable: false, unavailableReason: null });
   } finally { rm(); }
+});
+
+// ---- unavailable marking + dead-twin pruning -------------------------------
+test('markUnavailable shows in bookInfoMap and clears on markAvailable', () => {
+  const { store, libId, rm } = setup();
+  store.catalogRemote({ libraryId: libId, source: 'bw', remoteId: 'x1', meta: meta('x1') });
+  const issueId = store.db.prepare("SELECT issue_id FROM ebooks_files WHERE remote_id='x1'").get().issue_id;
+  assert.equal(store.bookInfoMap([issueId])[issueId].unavailable, false);
+  store.markUnavailable(issueId, 'the source no longer has this file');
+  const m = store.bookInfoMap([issueId])[issueId];
+  assert.equal(m.unavailable, true);
+  assert.equal(m.unavailableReason, 'the source no longer has this file');
+  store.markAvailable(issueId);
+  assert.equal(store.bookInfoMap([issueId])[issueId].unavailable, false);
+  rm();
+});
+
+test('a new copy of a book prunes an older copy the source can no longer serve; the sweep drops play-proven dead ones', async () => {
+  const { store, libId, rm } = setup();
+  const gone = new Set();
+  const listed = [[meta('old-a', { title: 'Same Book' }), meta('old-b', { title: 'Other Book' })]];
+  const src = {
+    id: 'bw',
+    listPage: async (_cfg, page) => ({ books: listed[page - 1] || [], page, totalPages: listed.length, total: listed.flat().length }),
+    probe: async (_cfg, remoteId) => ({ status: gone.has(remoteId) ? 404 : 206 }),
+  };
+  await runRemoteSync({ store, sources: [src], libraryId: libId });
+  assert.equal(remoteSyncStatus().pruned, 0);
+  // The old copy's file vanishes; a re-import arrives on the next page.
+  gone.add('old-a');
+  listed.push([meta('new-a', { title: 'Same Book', series: 'A Series', series_index: 1 })]);
+  await runRemoteSync({ store, sources: [src], libraryId: libId });
+  assert.equal(remoteSyncStatus().pruned, 1, 'the dead twin goes when its replacement arrives');
+  const ids = () => store.db.prepare("SELECT remote_id FROM ebooks_files WHERE source='bw' ORDER BY remote_id").all().map((r) => r.remote_id);
+  assert.deepEqual(ids(), ['new-a', 'old-b']);
+  assert.equal(store.db.prepare("SELECT COUNT(*) n FROM issues WHERE url='ebookremote:bw:old-a'").get().n, 0, 'the dead entry is gone from the shelf too');
+  // The sweep: an entry an open attempt proved dead, whose twin still serves.
+  listed.push([meta('dup-b', { title: 'Other Book' })]);
+  await runRemoteSync({ store, sources: [src], libraryId: libId }); // both 'Other Book' copies live → nothing pruned
+  assert.deepEqual(ids(), ['dup-b', 'new-a', 'old-b']);
+  gone.add('old-b');
+  const oldB = store.db.prepare("SELECT issue_id FROM ebooks_files WHERE remote_id='old-b'").get().issue_id;
+  store.markUnavailable(oldB, 'the source no longer has this file'); // what a failed open records
+  await runRemoteSync({ store, sources: [src], libraryId: libId });
+  assert.equal(remoteSyncStatus().pruned, 1);
+  assert.deepEqual(ids(), ['dup-b', 'new-a']);
+  rm();
 });

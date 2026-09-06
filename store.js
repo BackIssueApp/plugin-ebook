@@ -115,6 +115,10 @@ export function openEbooksStore(dbPath) {
   // it back into standalones.
   if (!efCols.includes('match_series')) db.exec('ALTER TABLE ebooks_files ADD COLUMN match_series TEXT');
   if (!efCols.includes('match_series_index')) db.exec('ALTER TABLE ebooks_files ADD COLUMN match_series_index REAL');
+  // A remote book the source could not serve (its file is gone): when, and
+  // what it said. Cleared the moment a download succeeds again.
+  if (!efCols.includes('unavailable_at')) db.exec('ALTER TABLE ebooks_files ADD COLUMN unavailable_at TEXT');
+  if (!efCols.includes('unavailable_reason')) db.exec('ALTER TABLE ebooks_files ADD COLUMN unavailable_reason TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS idx_ebooks_files_remote ON ebooks_files (source, remote_id)');
 
   const seriesByUrl = (url) => db.prepare('SELECT * FROM series WHERE url=?').get(url);
@@ -508,10 +512,52 @@ export function openEbooksStore(dbPath) {
       const out = {};
       const ids = (Array.isArray(issueIds) ? issueIds : []).map(Number).filter(Number.isFinite);
       if (!ids.length) return out;
-      const q = db.prepare(`SELECT issue_id, format, path, source FROM ebooks_files
+      const q = db.prepare(`SELECT issue_id, format, path, source, unavailable_at, unavailable_reason FROM ebooks_files
         WHERE issue_id IN (${ids.map(() => '?').join(',')})`);
-      for (const r of q.all(...ids)) out[r.issue_id] = { format: r.format, remote: !!r.source && !r.path };
+      for (const r of q.all(...ids)) out[r.issue_id] = { format: r.format, remote: !!r.source && !r.path, unavailable: !!r.unavailable_at, unavailableReason: r.unavailable_reason || null };
       return out;
+    },
+    /** The source could not serve this book (file gone upstream). */
+    markUnavailable(issueId, reason = null) {
+      db.prepare('UPDATE ebooks_files SET unavailable_at=?, unavailable_reason=? WHERE issue_id=?').run(new Date().toISOString(), reason ? String(reason).slice(0, 200) : null, issueId);
+    },
+    markAvailable(issueId) {
+      db.prepare('UPDATE ebooks_files SET unavailable_at=NULL, unavailable_reason=NULL WHERE issue_id=? AND unavailable_at IS NOT NULL').run(issueId);
+    },
+    /** Other remote entries from the same source and library that are the
+     *  same book (same title) — a re-import next to a record whose file has
+     *  since gone. Matched across shelves on purpose: the old record often sat
+     *  alone (no series info at the time) while the new one joined a series. */
+    duplicateRemoteEntries(source, remoteId) {
+      return db.prepare(`SELECT f2.issue_id, f2.remote_id
+        FROM ebooks_files f1
+        JOIN issues i1 ON i1.id = f1.issue_id
+        JOIN ebooks_files f2 ON f2.source = f1.source AND f2.library_id = f1.library_id AND f2.issue_id <> f1.issue_id AND f2.path IS NULL
+        JOIN issues i2 ON i2.id = f2.issue_id AND lower(trim(i2.title)) = lower(trim(i1.title))
+        WHERE f1.source = ? AND f1.remote_id = ?`).all(source, String(remoteId));
+    },
+    /** Entries already proven unavailable that have a same-titled twin which
+     *  is not — candidates for the end-of-sync sweep. */
+    unavailableWithTwin(source) {
+      return db.prepare(`SELECT DISTINCT f1.issue_id, f1.remote_id, f2.issue_id AS twin_issue_id, f2.remote_id AS twin_remote_id
+        FROM ebooks_files f1
+        JOIN issues i1 ON i1.id = f1.issue_id
+        JOIN ebooks_files f2 ON f2.source = f1.source AND f2.library_id = f1.library_id AND f2.issue_id <> f1.issue_id AND f2.path IS NULL AND f2.unavailable_at IS NULL
+        JOIN issues i2 ON i2.id = f2.issue_id AND lower(trim(i2.title)) = lower(trim(i1.title))
+        WHERE f1.source = ? AND f1.path IS NULL AND f1.unavailable_at IS NOT NULL`).all(source);
+    },
+    /** Drop a file-less remote entry: its plugin row, its issue, and the shelf
+     *  if it was the only book on it. */
+    removeRemoteEntry(issueId) {
+      const row = db.prepare('SELECT issue_id, path FROM ebooks_files WHERE issue_id=?').get(issueId);
+      if (!row || row.path) return false;
+      const issue = db.prepare("SELECT series_id FROM issues WHERE id=? AND url LIKE 'ebookremote:%'").get(issueId);
+      db.prepare('DELETE FROM ebooks_files WHERE issue_id=?').run(issueId);
+      if (issue) {
+        db.prepare('DELETE FROM issues WHERE id=?').run(issueId);
+        db.prepare(`DELETE FROM series WHERE id=? AND url LIKE 'ebook:%' AND NOT EXISTS (SELECT 1 FROM issues WHERE series_id=?)`).run(issue.series_id, issue.series_id);
+      }
+      return true;
     },
 
     /** Books never attempted against the metadata service, in matcher shape.

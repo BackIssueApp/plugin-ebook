@@ -183,8 +183,18 @@ export default function register(api) {
           source: f.source, remoteId: f.remote_id, libraryId: f.library_id, dbPath: config.dbPath,
         });
       } catch (e) {
-        return res.status(502).json({ error: `Could not open this book: ${String(e?.message || e)}` });
+        const msg = String(e?.message || e);
+        // The source no longer has the file (its record outlived the bytes):
+        // say so in words the reader can show, and remember it so the book
+        // reads as unavailable before the next tap.
+        if (/HTTP 404|HTTP 410|not found/i.test(msg)) {
+          const reason = 'the source no longer has this file';
+          store.markUnavailable?.(f.issue_id, reason);
+          return res.status(404).json({ error: reason, unavailable: true });
+        }
+        return res.status(502).json({ error: `Could not open this book: ${msg}` });
       }
+      store.markAvailable?.(f.issue_id);
       return serveBookFile(req, res, f.format, result.path);
     }
     return res.status(404).json({ error: 'file missing on disk' });

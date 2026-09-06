@@ -209,6 +209,12 @@
       const f = diskFile(i); return f ? (/\.epub$/i.test(f.name) ? 'epub' : 'pdf') : null;
     };
     const isRemote = (i) => { const bi = bookInfoOf(i); return !!(bi && bi.remote); };
+    const isDead = (i) => { const bi = bookInfoOf(i); return !!(bi && bi.unavailable); };
+    // The shelf last rendered — so a failed open can offer another copy of
+    // the same title from it.
+    let shelfIssues = [];
+    const sameTitle = (a, b) => String(a.title || '').trim().toLowerCase() === String(b.title || '').trim().toLowerCase();
+    const alternativeFor = (issue) => shelfIssues.find((o) => o && o.id !== issue.id && isBook(o) && !isDead(o) && sameTitle(o, issue)) || null;
     const isBook = (i) => !!i && i.id != null && !i.cv_issue_id && !i.corrupt
       && (!!bookInfoOf(i) || (!!i.owned && !!diskFile(i)));
 
@@ -367,7 +373,11 @@
           import(VENDOR),
         ]);
         const resp = await fetch('/api/ebooks/issue/' + issue.id + '/file');
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        if (!resp.ok) {
+          let reason = '';
+          try { reason = (await resp.json()).error || ''; } catch { /* not json */ }
+          throw new Error(reason || ('the server answered ' + resp.status));
+        }
         const name = (diskFile(issue) || {}).name || 'book.epub';
         const file = new File([await resp.blob()], name, { type: 'application/epub+zip' });
 
@@ -388,7 +398,16 @@
         if (prog && prog.locator) await view.init({ lastLocation: prog.locator });
         else view.renderer.next();
       } catch (e) {
-        stage.innerHTML = '<div class="ebr__loading">Couldn’t open this book: ' + esc(String(e?.message || e)) + '</div>';
+        // Say why — and when another copy of the same title on this shelf
+        // still opens, offer it right there.
+        const alt = alternativeFor(issue);
+        stage.innerHTML = '<div class="ebr__loading ebr__fail">' +
+          '<div>Couldn’t open this book: ' + esc(String(e?.message || e)) + '.</div>' +
+          (alt ? '<button type="button" class="ebr__alt">Open the ' + esc((bookFormat(alt) || 'other').toUpperCase()) + ' copy instead</button>' : '') +
+          '</div>';
+        const altBtn = stage.querySelector('.ebr__alt');
+        if (altBtn) altBtn.onclick = () => openBook(alt);
+        try { bookInfo[issue.id] = { ...(bookInfo[issue.id] || {}), unavailable: /no longer has/i.test(String(e?.message || '')) || (bookInfo[issue.id] || {}).unavailable }; } catch { /* fine */ }
       }
       wireReaderChrome();
     }
@@ -678,6 +697,7 @@
         ensureBookInfo(ctx.issues).then(() => { if (container.isConnected) renderBooksView(container, ctx); });
         return;
       }
+      shelfIssues = ctx.issues || [];
       const books = groupBooks(ctx.issues);
       if (!books.length) {
         container.innerHTML = '<div class="ebk__empty">No readable books in this series yet. If files were moved or deleted, a library scan will tidy this up.</div>';
@@ -902,11 +922,14 @@
           Number.isFinite(size) && size > 0 ? (size / 1048576).toFixed(1) + ' MB' : null,
           epub ? 'reads in-browser' : 'opens in PDF viewer',
         ].filter(Boolean).join(' · ');
-        return '<div class="ebs__file">' +
+        const bi = bookInfoOf(e);
+        const dead = !!(bi && bi.unavailable);
+        return '<div class="ebs__file' + (dead ? ' is-dead' : '') + '">' +
           '<span class="ebs__file-ext ebs__file-ext--' + (epub ? 'epub' : 'pdf') + '">' + fmtU + '</span>' +
           '<div class="ebs__file-main">' +
-            '<div class="ebs__file-name">' + esc(f.name || '') + '</div>' +
+            '<div class="ebs__file-name">' + esc(f.name || '') + (dead ? ' <span class="ebs__file-flag">Unavailable</span>' : '') + '</div>' +
             '<div class="ebs__file-meta">' + esc(meta) + '</div>' +
+            (dead ? '<div class="ebs__file-dead">Not available from its source right now' + (bi.unavailableReason ? ': ' + esc(bi.unavailableReason) : '') + '. Opening it tries again.</div>' : '') +
           '</div>' +
           '<button class="ebs__file-read" data-file-read="' + i + '">' +
             (epub ? (done ? 'Read again' : part ? 'Continue' : 'Read') : 'Open') + '</button>' +

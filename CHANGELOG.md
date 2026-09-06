@@ -8,6 +8,23 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-09-06
+
+### Fixed
+
+- **A remote book the source cannot serve says so.** When the source no
+  longer has the file behind an on-demand book, opening it now explains that
+  in the reader instead of a bare HTTP status, and — when another copy of
+  the same title on the shelf still opens — offers that copy right there.
+  The book is remembered as unavailable, flagged in the Files list before the
+  next tap, and cleared the moment a download succeeds again.
+- **Dead duplicates are pruned.** When a re-imported copy of a book arrives
+  next to an older record the source can no longer serve, the catalog sync
+  removes the dead one (matched by title within the library, across
+  shelves), and each sync also sweeps entries an open attempt already
+  proved dead whose twin still serves. Needs a source that can probe a file
+  cheaply; sources without that keep both copies.
+
 ## [0.2.0] — 2026-09-02
 
 ### Added
