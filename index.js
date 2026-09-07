@@ -19,6 +19,16 @@ import {
 
 const CONTENT_TYPES = { epub: 'application/epub+zip', pdf: 'application/pdf' };
 
+// Cards never show a cover wider than ~400 px; a local source proxy that
+// understands `?w=` then serves a few kilobytes instead of the full art.
+// `?w=0` asks for the original; absolute remote thumbnails are left alone.
+export function sizedCoverUrl(thumbnail, w) {
+  const t = String(thumbnail || '');
+  if (!t.startsWith('/') || /[?&]w=/.test(t)) return t;
+  const n = w === undefined ? 400 : (Number(w) | 0);
+  return n > 0 ? `${t}${t.includes('?') ? '&' : '?'}w=${n}` : t;
+}
+
 export default function register(api) {
   // The library type this plugin owns. selfDescribed: book series carry their
   // own metadata on the series row and list local issues — core renders them
@@ -139,7 +149,7 @@ export default function register(api) {
     const c = store.cover(Number(req.params.id));
     if (!c) return res.status(404).end();
     // Cacheable redirect — spares each card the extra round-trip on revisits.
-    if (c.thumbnail) { res.set('Cache-Control', 'private, max-age=86400'); return res.redirect(302, c.thumbnail); }
+    if (c.thumbnail) { res.set('Cache-Control', 'private, max-age=86400'); return res.redirect(302, sizedCoverUrl(c.thumbnail, req.query.w)); }
     res.set('Content-Type', c.cover_type);
     res.set('Cache-Control', 'private, max-age=86400');
     res.send(c.cover);
