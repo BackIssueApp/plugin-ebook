@@ -8,6 +8,16 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-09-08
+
+### Fixed
+
+- **A remote catalog sync could stall the whole server.** The lookup that
+  spots a re-imported book next to its dead old record compared titles
+  across the entire remote catalog for every new book, which on a catalog of
+  a few hundred thousand titles blocked the server for minutes per book.
+  Titles are now indexed on the row, so the lookup is instant at any size.
+
 ## [0.2.2] — 2026-09-07
 
 ### Changed

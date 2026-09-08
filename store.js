@@ -120,6 +120,24 @@ export function openEbooksStore(dbPath) {
   if (!efCols.includes('unavailable_at')) db.exec('ALTER TABLE ebooks_files ADD COLUMN unavailable_at TEXT');
   if (!efCols.includes('unavailable_reason')) db.exec('ALTER TABLE ebooks_files ADD COLUMN unavailable_reason TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS idx_ebooks_files_remote ON ebooks_files (source, remote_id)');
+  // lower(trim(issue title)) — see the twin indexes below.
+  if (!efCols.includes('title_key')) db.exec('ALTER TABLE ebooks_files ADD COLUMN title_key TEXT');
+  // The duplicate-twin lookups (remotesync) match remote entries by title.
+  // Comparing issue titles across a join was a whole-table scan per lookup:
+  // on a 159k-title remote catalog one lookup took minutes of blocked main
+  // thread, and a sync that found a few new books took the server down. The
+  // normalised title now lives on the row (filled lazily for rows from before
+  // this column existed), under an index the lookups probe instead.
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_ebooks_files_twin ON ebooks_files (source, library_id, title_key);
+    CREATE INDEX IF NOT EXISTS idx_ebooks_files_unavailable ON ebooks_files (source, unavailable_at);
+  `);
+  /** Fill title_key for a source's rows that predate the column (or lost it). */
+  const ensureTitleKeys = (source) => {
+    db.prepare(`UPDATE ebooks_files
+      SET title_key = (SELECT lower(trim(i.title)) FROM issues i WHERE i.id = ebooks_files.issue_id)
+      WHERE source = ? AND title_key IS NULL`).run(source);
+  };
 
   const seriesByUrl = (url) => db.prepare('SELECT * FROM series WHERE url=?').get(url);
   const isStandalone = (seriesRow) => /^ebook:l\d+:b:/.test(String(seriesRow?.url || ''));
@@ -326,14 +344,14 @@ export function openEbooksStore(dbPath) {
         // are left untouched so a cached download survives a re-sync.
         if (prev) {
           db.prepare(`UPDATE ebooks_files SET library_id=?, series_id=?, issue_id=?, format=?,
-              title_source='embedded', isbn=?, language=?, thumbnail=? WHERE rowid=?`)
-            .run(libraryId, seriesId, issueId, format, meta.isbn || null, meta.language || null, meta.coverUrl || null, prev.ef_rowid);
+              title_source='embedded', isbn=?, language=?, thumbnail=?, title_key=lower(trim(?)) WHERE rowid=?`)
+            .run(libraryId, seriesId, issueId, format, meta.isbn || null, meta.language || null, meta.coverUrl || null, title, prev.ef_rowid);
         } else {
           db.prepare(`INSERT INTO ebooks_files
-              (path, library_id, series_id, issue_id, format, size, mtime, title_source, isbn, language, thumbnail, source, remote_id, added_at)
-            VALUES (NULL, @lib, @sid, @iid, @format, NULL, NULL, 'embedded', @isbn, @language, @thumbnail, @source, @remote_id, strftime('%Y-%m-%dT%H:%M:%SZ','now'))`)
+              (path, library_id, series_id, issue_id, format, size, mtime, title_source, isbn, language, thumbnail, source, remote_id, added_at, title_key)
+            VALUES (NULL, @lib, @sid, @iid, @format, NULL, NULL, 'embedded', @isbn, @language, @thumbnail, @source, @remote_id, strftime('%Y-%m-%dT%H:%M:%SZ','now'), lower(trim(@title)))`)
             .run({
-              lib: libraryId, sid: seriesId, iid: issueId, format,
+              lib: libraryId, sid: seriesId, iid: issueId, format, title,
               isbn: meta.isbn || null, language: meta.language || null,
               thumbnail: meta.coverUrl || null, source, remote_id: String(remoteId),
             });
@@ -529,22 +547,26 @@ export function openEbooksStore(dbPath) {
      *  since gone. Matched across shelves on purpose: the old record often sat
      *  alone (no series info at the time) while the new one joined a series. */
     duplicateRemoteEntries(source, remoteId) {
+      ensureTitleKeys(source);
+      // CROSS JOIN pins f1 (one row, by its remote identity) as the outer
+      // loop, and `+f2.path` keeps the planner off the path primary key —
+      // every remote row has a NULL path, so that "unique" index is the
+      // whole table. f2 is then a probe of idx_ebooks_files_twin.
       return db.prepare(`SELECT f2.issue_id, f2.remote_id
         FROM ebooks_files f1
-        JOIN issues i1 ON i1.id = f1.issue_id
-        JOIN ebooks_files f2 ON f2.source = f1.source AND f2.library_id = f1.library_id AND f2.issue_id <> f1.issue_id AND f2.path IS NULL
-        JOIN issues i2 ON i2.id = f2.issue_id AND lower(trim(i2.title)) = lower(trim(i1.title))
-        WHERE f1.source = ? AND f1.remote_id = ?`).all(source, String(remoteId));
+        CROSS JOIN ebooks_files f2 ON f2.source = f1.source AND f2.library_id = f1.library_id
+          AND f2.title_key = f1.title_key AND f2.issue_id <> f1.issue_id AND +f2.path IS NULL
+        WHERE f1.source = ? AND f1.remote_id = ? AND f1.title_key IS NOT NULL`).all(source, String(remoteId));
     },
     /** Entries already proven unavailable that have a same-titled twin which
      *  is not — candidates for the end-of-sync sweep. */
     unavailableWithTwin(source) {
+      ensureTitleKeys(source);
       return db.prepare(`SELECT DISTINCT f1.issue_id, f1.remote_id, f2.issue_id AS twin_issue_id, f2.remote_id AS twin_remote_id
         FROM ebooks_files f1
-        JOIN issues i1 ON i1.id = f1.issue_id
-        JOIN ebooks_files f2 ON f2.source = f1.source AND f2.library_id = f1.library_id AND f2.issue_id <> f1.issue_id AND f2.path IS NULL AND f2.unavailable_at IS NULL
-        JOIN issues i2 ON i2.id = f2.issue_id AND lower(trim(i2.title)) = lower(trim(i1.title))
-        WHERE f1.source = ? AND f1.path IS NULL AND f1.unavailable_at IS NOT NULL`).all(source);
+        CROSS JOIN ebooks_files f2 ON f2.source = f1.source AND f2.library_id = f1.library_id
+          AND f2.title_key = f1.title_key AND f2.issue_id <> f1.issue_id AND +f2.path IS NULL AND +f2.unavailable_at IS NULL
+        WHERE f1.source = ? AND +f1.path IS NULL AND f1.unavailable_at IS NOT NULL AND f1.title_key IS NOT NULL`).all(source);
     },
     /** Drop a file-less remote entry: its plugin row, its issue, and the shelf
      *  if it was the only book on it. */
