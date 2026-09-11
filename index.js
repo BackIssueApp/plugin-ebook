@@ -13,6 +13,7 @@ import { openEbooksStore } from './store.js';
 import { scanLibraries, scanState, ebookLibraries } from './scanner.js';
 import { makeBooksClient, matchBookAcross, matchNewBooks } from './metadata.js';
 import { makeImportHandler } from './importer.js';
+import { extractEpubOutline } from './extract.js';
 import {
   runRemoteSync, stopRemoteSync, remoteSyncStatus, isRemoteSyncRunning, materializeOnRead,
 } from './remotesync.js';
@@ -254,10 +255,23 @@ export default function register(api) {
   // GET /api/ebooks/issue/:id/details — the detail sheet's Details grid needs
   // the plugin-private ebooks_files columns (language/ISBN/added date) that
   // core's issue payload has no home for. One row per file/issue, tiny.
-  api.registerRoute('get', '/api/ebooks/issue/:id/details', (req, res) => {
+  // The outline (page count + chapters with start pages) is derived from the
+  // file the first time anyone asks and cached on the row; a book that only
+  // exists remotely reports none until it has been opened once.
+  api.registerRoute('get', '/api/ebooks/issue/:id/details', async (req, res) => {
     const f = fileOr404(req, res);
     if (!f) return;
-    res.json({ details: { language: f.language, isbn: f.isbn, added: f.added_at, format: f.format, size: f.size } });
+    let outline = store.outline(f.issue_id);
+    if (!outline && f.format === 'epub' && f.path && fs.existsSync(f.path)) {
+      try {
+        outline = await extractEpubOutline(fs.readFileSync(f.path));
+        store.saveOutline(f.issue_id, outline);
+      } catch { outline = null; }
+    }
+    res.json({ details: {
+      language: f.language, isbn: f.isbn, added: f.added_at, format: f.format, size: f.size,
+      pages: outline?.pages ?? null, chapters: outline?.chapters ?? null,
+    } });
   }, { access: CAN_USE });
 
   // POST /api/ebooks/scan — kick a scan now (fire-and-forget; poll status).

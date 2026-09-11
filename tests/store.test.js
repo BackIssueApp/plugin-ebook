@@ -120,13 +120,27 @@ test('progress: per-user upsert with clamped fraction; stateMap feeds the row ic
   const { p, store, libId, rm } = setup();
   try {
     const { issueId } = store.catalogFile({ libraryId: libId, path: file(p, 'dune.epub'), format: 'epub', size: 100, mtime: 1, meta: DUNE });
-    assert.deepEqual(store.progress(1, issueId), { locator: null, fraction: 0, updated_at: null });
+    assert.deepEqual(store.progress(1, issueId), { locator: null, fraction: 0, updated_at: null, chapter: null, page: null, pages: null });
     store.saveProgress(1, issueId, { locator: 'epubcfi(/6/4!/4/2)', fraction: 0.25 });
-    store.saveProgress(1, issueId, { locator: 'epubcfi(/6/8!/4/2)', fraction: 1.7 });
+    store.saveProgress(1, issueId, { locator: 'epubcfi(/6/8!/4/2)', fraction: 1.7, chapter: 'Chapter 7', page: 142, pages: 312 });
     assert.equal(store.progress(1, issueId).locator, 'epubcfi(/6/8!/4/2)');
     assert.equal(store.progress(1, issueId).fraction, 1, 'fraction clamped to [0,1]');
+    assert.equal(store.progress(1, issueId).chapter, 'Chapter 7');
+    assert.equal(store.progress(1, issueId).page, 142);
     assert.equal(store.progress(2, issueId).fraction, 0, 'other users untouched');
-    assert.deepEqual(store.stateMap(1), { [issueId]: { fraction: 1 } });
+    const st = store.stateMap(1)[issueId];
+    assert.equal(st.fraction, 1);
+    assert.equal(st.page, 142); assert.equal(st.pages, 312); assert.equal(st.chapter, 'Chapter 7');
+    assert.equal(st.title, 'Dune', 'the state carries the title for a home card');
+    assert.ok(st.series_id, 'and the series it opens to');
+    // A locator-only save (an older client) keeps the row but drops the
+    // human-readable position it can't vouch for.
+    store.saveProgress(1, issueId, { locator: 'epubcfi(/6/9!/4/2)', fraction: 0.5 });
+    assert.equal(store.progress(1, issueId).chapter, null);
+    // The outline is cached on the file row.
+    assert.equal(store.outline(issueId), null);
+    store.saveOutline(issueId, { pages: 312, chapters: [{ label: 'One', href: 'c1.xhtml', page: 1 }] });
+    assert.equal(store.outline(issueId).pages, 312);
   } finally { rm(); }
 });
 
@@ -244,6 +258,15 @@ test('bookmarks: per user, per book, ordered by position', () => {
     const mine = store.listBookmarks(1, b.issueId);
     assert.deepEqual(mine.map((m) => m.fraction), [0.1, 0.42], 'ordered by position in the book');
     assert.equal(mine[1].note, 'the spice');
+    assert.equal(mine[1].color, null, 'a plain bookmark has no colour');
+
+    // A highlight is a bookmark that also keeps its passage and a colour.
+    store.addBookmark(1, b.issueId, { locator: 'epubcfi(/6/16!/4/2)', fraction: 0.5, color: 'yellow', text: 'He who controls the spice' });
+    const hl = store.listBookmarks(1, b.issueId).find((m) => m.color);
+    assert.equal(hl.color, 'yellow');
+    assert.equal(hl.text, 'He who controls the spice');
+    assert.equal(hl.note, null);
+    store.deleteBookmark(1, hl.id);
     assert.equal(store.listBookmarks(2, b.issueId).length, 1, 'another user sees only their own');
 
     // Delete is scoped to the owner: user 2 cannot remove user 1's bookmark.

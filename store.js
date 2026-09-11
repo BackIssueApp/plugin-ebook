@@ -122,6 +122,22 @@ export function openEbooksStore(dbPath) {
   db.exec('CREATE INDEX IF NOT EXISTS idx_ebooks_files_remote ON ebooks_files (source, remote_id)');
   // lower(trim(issue title)) — see the twin indexes below.
   if (!efCols.includes('title_key')) db.exec('ALTER TABLE ebooks_files ADD COLUMN title_key TEXT');
+  // A bookmark grew into an annotation: a highlight carries the passage it
+  // marks and a colour, a plain bookmark carries neither. Both are optional so
+  // every existing row, and every client that only knows bookmarks, still fits.
+  const ebCols = db.prepare("SELECT name FROM pragma_table_info('ebooks_bookmarks')").all().map((r) => r.name);
+  if (!ebCols.includes('color')) db.exec('ALTER TABLE ebooks_bookmarks ADD COLUMN color TEXT');
+  if (!ebCols.includes('text')) db.exec('ALTER TABLE ebooks_bookmarks ADD COLUMN text TEXT');
+  // The book's outline (page count + chapter start pages), derived from the
+  // file once and kept here so the detail screens can show "page 142 of 312"
+  // and a chapter list without opening the book.
+  if (!efCols.includes('outline_json')) db.exec('ALTER TABLE ebooks_files ADD COLUMN outline_json TEXT');
+  // Where a position is in human terms — the chapter name and the page in the
+  // outline's units — so a resume card can say more than a percentage.
+  const epCols = db.prepare("SELECT name FROM pragma_table_info('ebooks_progress')").all().map((r) => r.name);
+  if (!epCols.includes('chapter')) db.exec('ALTER TABLE ebooks_progress ADD COLUMN chapter TEXT');
+  if (!epCols.includes('page')) db.exec('ALTER TABLE ebooks_progress ADD COLUMN page INTEGER');
+  if (!epCols.includes('pages')) db.exec('ALTER TABLE ebooks_progress ADD COLUMN pages INTEGER');
   // The duplicate-twin lookups (remotesync) match remote entries by title.
   // Comparing issue titles across a join was a whole-table scan per lookup:
   // on a 159k-title remote catalog one lookup took minutes of blocked main
@@ -450,30 +466,49 @@ export function openEbooksStore(dbPath) {
     },
 
     progress(userId, issueId) {
-      return db.prepare('SELECT locator, fraction, updated_at FROM ebooks_progress WHERE user_id=? AND issue_id=?')
-        .get(userId, issueId) || { locator: null, fraction: 0, updated_at: null };
+      return db.prepare('SELECT locator, fraction, updated_at, chapter, page, pages FROM ebooks_progress WHERE user_id=? AND issue_id=?')
+        .get(userId, issueId) || { locator: null, fraction: 0, updated_at: null, chapter: null, page: null, pages: null };
     },
-    saveProgress(userId, issueId, { locator, fraction }) {
-      db.prepare(`INSERT INTO ebooks_progress (user_id, issue_id, locator, fraction, updated_at)
-        VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    // chapter/page/pages are optional: a client that only knows the locator
+    // still saves, and a client that knows more makes the resume card richer.
+    saveProgress(userId, issueId, { locator, fraction, chapter, page, pages }) {
+      const int = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : null);
+      db.prepare(`INSERT INTO ebooks_progress (user_id, issue_id, locator, fraction, updated_at, chapter, page, pages)
+        VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ','now'), ?, ?, ?)
         ON CONFLICT(user_id, issue_id) DO UPDATE SET
-          locator = excluded.locator, fraction = excluded.fraction, updated_at = excluded.updated_at`)
+          locator = excluded.locator, fraction = excluded.fraction, updated_at = excluded.updated_at,
+          chapter = excluded.chapter, page = excluded.page, pages = excluded.pages`)
         .run(userId, issueId, locator == null ? null : String(locator),
-          Math.min(1, Math.max(0, Number(fraction) || 0)));
+          Math.min(1, Math.max(0, Number(fraction) || 0)),
+          chapter ? String(chapter).slice(0, 200) : null, int(page), int(pages));
+    },
+    /** The cached outline for a book, or null when it hasn't been derived yet. */
+    outline(issueId) {
+      const r = db.prepare('SELECT outline_json FROM ebooks_files WHERE issue_id=?').get(Number(issueId));
+      if (!r?.outline_json) return null;
+      try { return JSON.parse(r.outline_json); } catch { return null; }
+    },
+    saveOutline(issueId, outline) {
+      db.prepare('UPDATE ebooks_files SET outline_json=? WHERE issue_id=?').run(JSON.stringify(outline), Number(issueId));
     },
     // ---- bookmarks (per user, per book) ----
     listBookmarks(userId, issueId) {
-      return db.prepare(`SELECT id, locator, fraction, note, created_at
+      return db.prepare(`SELECT id, locator, fraction, note, color, text, created_at
         FROM ebooks_bookmarks WHERE user_id=? AND issue_id=? ORDER BY fraction, id`)
         .all(userId || 0, Number(issueId));
     },
-    addBookmark(userId, issueId, { locator, fraction, note } = {}) {
+    addBookmark(userId, issueId, { locator, fraction, note, color, text } = {}) {
       const loc = String(locator || '').trim();
       if (!loc) throw new Error('a bookmark needs a position');
-      const info = db.prepare(`INSERT INTO ebooks_bookmarks (user_id, issue_id, locator, fraction, note, created_at)
-        VALUES (?,?,?,?,?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))`)
+      // The colour is a short client token (e.g. "yellow"), not a hex the
+      // server would have to keep in step with two apps' palettes.
+      const info = db.prepare(`INSERT INTO ebooks_bookmarks (user_id, issue_id, locator, fraction, note, color, text, created_at)
+        VALUES (?,?,?,?,?,?,?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))`)
         .run(userId || 0, Number(issueId), loc,
-          Math.min(1, Math.max(0, Number(fraction) || 0)), note ? String(note).slice(0, 500) : null);
+          Math.min(1, Math.max(0, Number(fraction) || 0)),
+          note ? String(note).slice(0, 500) : null,
+          color ? String(color).trim().slice(0, 16) : null,
+          text ? String(text).slice(0, 2000) : null);
       return { id: info.lastInsertRowid };
     },
     deleteBookmark(userId, id) {
@@ -514,8 +549,16 @@ export function openEbooksStore(dbPath) {
     /** All of one user's positions — the client paints row icons from this. */
     stateMap(userId) {
       const out = {};
-      for (const r of db.prepare('SELECT issue_id, fraction FROM ebooks_progress WHERE user_id=?').all(userId)) {
-        out[r.issue_id] = { fraction: r.fraction };
+      // Enough for a "reading now" card without another round trip: the
+      // series the book files under, its title, and where the reader left off.
+      for (const r of db.prepare(`SELECT p.issue_id, p.fraction, p.updated_at, p.chapter, p.page, p.pages,
+          i.series_id, i.title
+        FROM ebooks_progress p LEFT JOIN issues i ON i.id = p.issue_id WHERE p.user_id=?`).all(userId)) {
+        out[r.issue_id] = {
+          fraction: r.fraction, updated_at: r.updated_at,
+          chapter: r.chapter, page: r.page, pages: r.pages,
+          series_id: r.series_id, title: r.title,
+        };
       }
       return out;
     },

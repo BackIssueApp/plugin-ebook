@@ -8,6 +8,22 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+## [0.2.4] — 2026-09-11
+
+### Added
+
+- **Positions in human terms.** A reading position can now carry the chapter
+  name and a page-of-pages alongside the locator, so a resume card can say
+  "Chapter 7 · page 142 of 312" instead of a bare percentage. `/state` reports
+  these too, with the book's title and series, so a home screen can build a
+  "reading now" card from one call.
+- **Book outline on demand.** `GET /api/ebooks/issue/:id/details` now includes
+  the book's estimated page count and its chapters with the page each starts
+  on, derived from the file the first time it is asked for and cached.
+- **Highlights.** A bookmark can carry a colour and the passage it marks —
+  the shape the mobile readers use for highlights and notes. Older clients
+  that only know bookmarks are unaffected.
+
 ## [0.2.3] — 2026-09-08
 
 ### Fixed

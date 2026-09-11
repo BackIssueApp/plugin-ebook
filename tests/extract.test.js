@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import { PDFDocument } from 'pdf-lib';
-import { extractEpubMeta, extractPdfMeta, isbnOf } from '../extract.js';
+import { extractEpubMeta, extractEpubOutline, extractPdfMeta, isbnOf, BYTES_PER_PAGE } from '../extract.js';
 
 const OPF = `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
@@ -99,4 +99,63 @@ test('isbnOf normalizes urn:/hyphens and rejects non-ISBN identifiers', () => {
   assert.equal(isbnOf('044147812x'), '044147812X');
   assert.equal(isbnOf('uuid:deadbeef'), null);
   assert.equal(isbnOf('12345'), null);
+});
+
+/** An EPUB with a real spine: three chapters of known size and a nav doc. */
+async function outlineEpub({ ncx = false } = {}) {
+  const zip = new JSZip();
+  const chapter = (n, bytes) => `<html><body><h1>Chapter ${n}</h1><p>${'x'.repeat(bytes)}</p></body></html>`;
+  zip.file('mimetype', 'application/epub+zip');
+  zip.file('META-INF/container.xml',
+    '<container><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>');
+  zip.file('OEBPS/content.opf',
+    `<package><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Outline</dc:title></metadata>
+     <manifest>
+       <item id="c1" href="text/c1.xhtml" media-type="application/xhtml+xml"/>
+       <item id="c2" href="text/c2.xhtml" media-type="application/xhtml+xml"/>
+       <item id="c3" href="text/c3.xhtml" media-type="application/xhtml+xml"/>
+       <item id="notes" href="text/notes.xhtml" media-type="application/xhtml+xml"/>
+       ${ncx ? '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>'
+             : '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>'}
+     </manifest>
+     <spine><itemref idref="c1"/><itemref idref="c2"/><itemref idref="c3"/><itemref idref="notes" linear="no"/></spine></package>`);
+  zip.file('OEBPS/text/c1.xhtml', chapter(1, 3000));
+  zip.file('OEBPS/text/c2.xhtml', chapter(2, 4500));
+  zip.file('OEBPS/text/c3.xhtml', chapter(3, 1000));
+  zip.file('OEBPS/text/notes.xhtml', chapter(9, 90000));
+  if (ncx) {
+    zip.file('OEBPS/toc.ncx', `<ncx><navMap>
+      <navPoint id="a"><navLabel><text>One</text></navLabel><content src="text/c1.xhtml"/></navPoint>
+      <navPoint id="b"><navLabel><text>Two</text></navLabel><content src="text/c2.xhtml#start"/></navPoint>
+      <navPoint id="c"><navLabel><text>Three</text></navLabel><content src="text/c3.xhtml"/></navPoint>
+    </navMap></ncx>`);
+  } else {
+    zip.file('OEBPS/nav.xhtml', `<html xmlns:epub="http://www.idpf.org/2007/ops"><body>
+      <nav epub:type="toc"><ol>
+        <li><a href="text/c1.xhtml">One</a></li>
+        <li><a href="text/c2.xhtml#start">Two &amp; more</a><ol><li><a href="text/c3.xhtml">Three</a></li></ol></li>
+      </ol></nav>
+      <nav epub:type="landmarks"><ol><li><a href="text/c1.xhtml">Start</a></li></ol></nav>
+    </body></html>`);
+  }
+  return zip.generateAsync({ type: 'nodebuffer' });
+}
+
+test('EPUB outline: pages count the linear spine in fixed slices; chapters carry their start page', async () => {
+  const o = await extractEpubOutline(await outlineEpub());
+  const c1 = Buffer.byteLength('<html><body><h1>Chapter 1</h1><p>' + 'x'.repeat(3000) + '</p></body></html>');
+  const c2 = Buffer.byteLength('<html><body><h1>Chapter 2</h1><p>' + 'x'.repeat(4500) + '</p></body></html>');
+  const c3 = Buffer.byteLength('<html><body><h1>Chapter 3</h1><p>' + 'x'.repeat(1000) + '</p></body></html>');
+  assert.equal(o.pages, Math.ceil((c1 + c2 + c3) / BYTES_PER_PAGE), 'non-linear notes are not pages');
+  assert.deepEqual(o.chapters.map((c) => c.label), ['One', 'Two & more', 'Three'], 'toc nav only, nested included, landmarks ignored');
+  assert.equal(o.chapters[0].page, 1);
+  assert.equal(o.chapters[1].page, Math.floor(c1 / BYTES_PER_PAGE) + 1, 'a fragment href still maps to its section');
+  assert.equal(o.chapters[2].page, Math.floor((c1 + c2) / BYTES_PER_PAGE) + 1);
+});
+
+test('EPUB outline: NCX books get the same shape', async () => {
+  const o = await extractEpubOutline(await outlineEpub({ ncx: true }));
+  assert.deepEqual(o.chapters.map((c) => c.label), ['One', 'Two', 'Three']);
+  assert.equal(o.chapters[0].page, 1);
+  assert.ok(o.chapters[1].page > 1);
 });
