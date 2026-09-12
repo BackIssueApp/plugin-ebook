@@ -10,6 +10,7 @@
 // (ebooks_files), and the per-user EPUB reading position (ebooks_progress,
 // keyed by core issue id). Same catalog.db file, own connection — and core's
 // exported library_files helpers are reused rather than re-implemented.
+import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { upsertLibraryFile, linkLibraryFile, deleteLibraryFile, getLibraryFile } from '../../src/db.js';
@@ -22,6 +23,16 @@ const slug = (s) => String(s || '').toLowerCase().normalize('NFKD')
 export const seriesUrlFor = (libraryId, meta) => (meta.series
   ? `ebook:l${libraryId}:s:${slug(meta.series)}`
   : `ebook:l${libraryId}:b:${slug(meta.title)}~${slug((meta.authors || [])[0] || '')}`);
+/** A title reduced to what identifies the book: lower-case, bracketed notes
+ *  dropped, cut at a subtitle (": A Novel", " - Book One"), punctuation
+ *  collapsed — "Theo of Golden: A Novel (English Edition)" → "theo of golden". */
+export function titleKey(t) {
+  return String(t || '').toLowerCase()
+    .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
+    .split(/\s*[:–—]\s*|\s+-\s+/)[0]
+    .replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
 const issueUrlFor = (p) => 'ebookfile:' + p;
 
 // series_index → issue number string ('1', '2.5'); standalone books are '1'.
@@ -103,6 +114,19 @@ export function openEbooksStore(dbPath) {
       show_continue INTEGER NOT NULL DEFAULT 1,
       show_new      INTEGER NOT NULL DEFAULT 1
     );
+    CREATE TABLE IF NOT EXISTS ebooks_wanted (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      match_id   TEXT NOT NULL UNIQUE,   -- the catalog's id for the book
+      title      TEXT NOT NULL,
+      author     TEXT,
+      year       TEXT,
+      isbn       TEXT,
+      cover      TEXT,
+      added_by   INTEGER NOT NULL DEFAULT 0,
+      added_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      tried_at   TEXT,
+      last_error TEXT
+    );
   `);
   // Migrate a pre-remote ebooks_files table in place — the CREATE above only
   // shapes fresh DBs, so add the file-less-entry columns to existing ones.
@@ -180,6 +204,22 @@ export function openEbooksStore(dbPath) {
       // a match must never override a grouping the file itself declared.
       series: isStandalone(s) ? null : (s?.title || null),
     };
+  }
+
+  // A file on disk that belongs to an issue: the shared file index row plus
+  // its link to the shelf, the same way catalogFile records a scanned book.
+  function ownFile(issueId, p, size, mtime) {
+    const iss = db.prepare('SELECT series_id FROM issues WHERE id=?').get(issueId);
+    if (!iss) return;
+    let st = { size: size ?? null, mtime: mtime ?? null };
+    if (st.size == null || st.mtime == null) {
+      try { const f = fs.statSync(p); st = { size: f.size, mtime: Math.round(f.mtimeMs) }; } catch { /* keep what we were told */ }
+    }
+    upsertLibraryFile(db, {
+      path: p, dir: path.dirname(p), name: path.basename(p), size: st.size, mtime: st.mtime,
+      page_count: null, has_metadata: 1, valid: 1, error: null, verified: 0,
+    });
+    linkLibraryFile(db, p, iss.series_id, issueId);
   }
 
   const store = {
@@ -385,10 +425,17 @@ export function openEbooksStore(dbPath) {
 
     /** After a remote entry's file is downloaded on read, record where it
      *  landed. source/remote_id stay set (we still know its origin), so a later
-     *  re-sync won't duplicate it and the disk scanner treats it as intact. */
+     *  re-sync won't duplicate it and the disk scanner treats it as intact.
+     *  The book is on the server now, so it is owned like any other: the
+     *  issue gets its file path and the file index a row — without that the
+     *  shelf keeps counting it as "available on demand". */
     materializedPath(issueId, p, size, mtime) {
-      db.prepare('UPDATE ebooks_files SET path=?, size=?, mtime=? WHERE issue_id=?')
-        .run(p, size ?? null, mtime ?? null, Number(issueId));
+      const iid = Number(issueId);
+      db.transaction(() => {
+        db.prepare('UPDATE ebooks_files SET path=?, size=?, mtime=? WHERE issue_id=?').run(p, size ?? null, mtime ?? null, iid);
+        db.prepare('UPDATE issues SET file_path=? WHERE id=?').run(p, iid);
+        ownFile(iid, p, size, mtime);
+      })();
     },
 
     /** Resumable remote-sync cursor: the next list page to fetch for a source. */
@@ -613,6 +660,83 @@ export function openEbooksStore(dbPath) {
     },
     /** Drop a file-less remote entry: its plugin row, its issue, and the shelf
      *  if it was the only book on it. */
+    /** Drop every file-less entry a remote source put on the shelf — the
+     *  source was removed, or the shelf is being reset — with their issues,
+     *  the series left empty, and the source's sync cursor, so a later
+     *  re-enable starts from scratch. An entry the source had already fetched
+     *  to a file in the library becomes an ordinary local book (the file is
+     *  the user's now); one whose file has since gone is dropped with the
+     *  rest. → { entries, series, adopted } */
+    removeRemoteSource(source) {
+      const src = String(source || '');
+      if (!src) return { entries: 0, series: 0, adopted: 0 };
+      return db.transaction(() => {
+        let adopted = 0;
+        for (const r of db.prepare('SELECT issue_id, path, size, mtime FROM ebooks_files WHERE source=? AND path IS NOT NULL AND issue_id IS NOT NULL').all(src)) {
+          if (!fs.existsSync(r.path)) { db.prepare('UPDATE ebooks_files SET path=NULL WHERE issue_id=?').run(r.issue_id); continue; }
+          db.prepare('UPDATE ebooks_files SET source=NULL, remote_id=NULL, title_key=NULL, unavailable_at=NULL, unavailable_reason=NULL WHERE issue_id=?').run(r.issue_id);
+          db.prepare('UPDATE issues SET url=?, file_path=? WHERE id=?').run(issueUrlFor(r.path), r.path, r.issue_id);
+          ownFile(r.issue_id, r.path, r.size, r.mtime);
+          adopted++;
+        }
+        db.exec('CREATE TEMP TABLE IF NOT EXISTS gone_issues (id INTEGER PRIMARY KEY); CREATE TEMP TABLE IF NOT EXISTS gone_series (id INTEGER PRIMARY KEY); DELETE FROM gone_issues; DELETE FROM gone_series');
+        db.prepare('INSERT OR IGNORE INTO gone_issues SELECT issue_id FROM ebooks_files WHERE source=? AND path IS NULL AND issue_id IS NOT NULL').run(src);
+        db.prepare("INSERT OR IGNORE INTO gone_series SELECT series_id FROM issues WHERE id IN (SELECT id FROM gone_issues) AND url LIKE 'ebookremote:%'").run();
+        const entries = db.prepare('DELETE FROM ebooks_files WHERE source=? AND path IS NULL').run(src).changes;
+        db.prepare("DELETE FROM issues WHERE id IN (SELECT id FROM gone_issues) AND url LIKE 'ebookremote:%'").run();
+        const series = db.prepare("DELETE FROM series WHERE id IN (SELECT id FROM gone_series) AND url LIKE 'ebook:%' AND NOT EXISTS (SELECT 1 FROM issues WHERE issues.series_id = series.id)").run().changes;
+        try { db.prepare('DELETE FROM ebooks_remote_sync WHERE source=?').run(src); } catch { /* no cursor kept */ }
+        db.exec('DROP TABLE gone_issues; DROP TABLE gone_series');
+        return { entries, series, adopted };
+      })();
+    },
+
+
+    /** Is this catalog book on the shelf already? By its catalog id, its ISBN,
+     *  or the same title with an author that does not contradict. → { issueId,
+     *  seriesId } or null. */
+    onShelf({ matchId = null, isbn = null, title = null, author = null } = {}) {
+      const found = (issueId) => {
+        const i = db.prepare('SELECT id, series_id FROM issues WHERE id=?').get(issueId);
+        return i ? { issueId: i.id, seriesId: i.series_id } : null;
+      };
+      const cleanIsbn = String(isbn || '').replace(/[\s-]/g, '') || null;
+      const byKey = db.prepare(`SELECT f.issue_id FROM ebooks_files f WHERE f.issue_id IS NOT NULL AND ((@mid IS NOT NULL AND f.match_id = @mid) OR (@isbn IS NOT NULL AND replace(replace(f.isbn,'-',''),' ','') = @isbn)) LIMIT 1`)
+        .get({ mid: matchId != null ? String(matchId) : null, isbn: cleanIsbn });
+      if (byKey) { const f = found(byKey.issue_id); if (f) return f; }
+      if (!title) return null;
+      const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      // The same book is titled many ways — "Theo of Golden", "Theo of Golden:
+      // A Novel", "Theo of Golden (English Edition)" — so titles are compared
+      // by their key: the part before a subtitle, with bracketed notes dropped.
+      const key = titleKey(title);
+      if (!key) return null;
+      const rows = db.prepare(`SELECT f.issue_id, i.title, s.publisher FROM ebooks_files f
+          JOIN issues i ON i.id = f.issue_id JOIN series s ON s.id = i.series_id
+         WHERE lower(i.title) LIKE ? LIMIT 40`).all(key.split(' ')[0] + '%');
+      const a = norm(author);
+      const last = a.split(' ').pop();
+      const hit = rows.find((r) => titleKey(r.title) === key
+        && (!a || !r.publisher || norm(r.publisher).includes(a) || a.includes(norm(r.publisher)) || (last && norm(r.publisher).includes(last))));
+      return hit ? found(hit.issue_id) : null;
+    },
+
+    /** Want a catalog book: one row per catalog id (asking again refreshes it). */
+    addWanted(item, userId = 0) {
+      const r = db.prepare(`INSERT INTO ebooks_wanted (match_id, title, author, year, isbn, cover, added_by)
+          VALUES (@match_id, @title, @author, @year, @isbn, @cover, @added_by)
+          ON CONFLICT(match_id) DO UPDATE SET title=excluded.title, author=excluded.author, year=excluded.year, isbn=excluded.isbn, cover=excluded.cover`)
+        .run({ match_id: String(item.id), title: item.title || 'Untitled', author: item.author || null, year: item.year || null, isbn: item.isbn || null, cover: item.cover || null, added_by: userId || 0 });
+      return this.wantedByMatch(String(item.id)) || this.wantedById(r.lastInsertRowid);
+    },
+    wantedById(id) { return db.prepare('SELECT * FROM ebooks_wanted WHERE id=?').get(Number(id)) || null; },
+    wantedByMatch(matchId) { return db.prepare('SELECT * FROM ebooks_wanted WHERE match_id=?').get(String(matchId)) || null; },
+    listWanted() { return db.prepare('SELECT * FROM ebooks_wanted ORDER BY id').all(); },
+    removeWanted(id) { return db.prepare('DELETE FROM ebooks_wanted WHERE id=?').run(Number(id)).changes; },
+    noteWantedTry(id, error = null) {
+      db.prepare(`UPDATE ebooks_wanted SET tried_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'), last_error=? WHERE id=?`).run(error, Number(id));
+    },
+
     removeRemoteEntry(issueId) {
       const row = db.prepare('SELECT issue_id, path FROM ebooks_files WHERE issue_id=?').get(issueId);
       if (!row || row.path) return false;
@@ -656,10 +780,13 @@ export function openEbooksStore(dbPath) {
         if (Array.isArray(merged.authors) && merged.authors.length && !series.publisher) {
           db.prepare('UPDATE series SET publisher=? WHERE id=?').run(merged.authors.join(', '), series.id);
         }
-        if (merged.description !== undefined && standalone) {
+        // A standalone shelf is the book, so its blurb and year are the
+        // book's. A series shelf keeps the first book's until it has its own —
+        // a shelf with nothing on it says less than the first book's blurb.
+        if (merged.description !== undefined && (standalone || !series.description)) {
           db.prepare('UPDATE series SET description=? WHERE id=?').run(merged.description, series.id);
         }
-        if (merged.published_date && standalone && !series.year) {
+        if (merged.published_date && !series.year) {
           const y = year4(merged.published_date);
           if (y) db.prepare('UPDATE series SET year=? WHERE id=?').run(y, series.id);
         }
@@ -697,14 +824,25 @@ export function openEbooksStore(dbPath) {
           if (target && target.id !== series.id) {
             db.prepare('UPDATE issues SET series_id=?, issue_number=? WHERE id=?')
               .run(target.id, indexNumber(merged.series_index), issueId);
-            // Carry the cover over when the series shelf has none yet.
-            if (!target.cover_url && (series.cover_url || merged.thumbnail)) {
-              db.prepare('UPDATE series SET cover_url=? WHERE id=?')
-                .run(series.cover_url || `/api/ebooks/issue/${issueId}/cover`, target.id);
-            }
+            // The file's own rows follow the book — the shelf counts what it
+            // owns from library_files, so a file left pointing at the pruned
+            // shelf would make the book look not-yet-downloaded ("on demand").
+            db.prepare('UPDATE library_files SET series_id=? WHERE issue_id=?').run(target.id, issueId);
+            db.prepare('UPDATE ebooks_files SET series_id=? WHERE issue_id=?').run(target.id, issueId);
+            // Carry what the standalone shelf learned — cover, blurb, year —
+            // to the series shelf where it has none yet. The standalone row
+            // is about to be pruned, and this is the only copy.
+            const left = db.prepare('SELECT cover_url, description, year FROM series WHERE id=?').get(series.id) || {};
+            const carry = {
+              cover_url: !target.cover_url && (left.cover_url || merged.thumbnail) ? (left.cover_url || `/api/ebooks/issue/${issueId}/cover`) : null,
+              description: !target.description && left.description ? left.description : null,
+              year: !target.year && left.year ? left.year : null,
+            };
+            db.prepare('UPDATE series SET cover_url=COALESCE(@cover_url, cover_url), description=COALESCE(@description, description), year=COALESCE(@year, year) WHERE id=@id')
+              .run({ ...carry, id: target.id });
             // The standalone row this book left behind is now empty — prune it.
-            const left = db.prepare('SELECT COUNT(*) n FROM issues WHERE series_id=?').get(series.id).n;
-            if (!left) db.prepare("DELETE FROM series WHERE id=? AND url LIKE 'ebook:%'").run(series.id);
+            const remaining = db.prepare('SELECT COUNT(*) n FROM issues WHERE series_id=?').get(series.id).n;
+            if (!remaining) db.prepare("DELETE FROM series WHERE id=? AND url LIKE 'ebook:%'").run(series.id);
           }
         }
       });

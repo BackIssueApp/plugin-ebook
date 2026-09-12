@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { openDb } from '../../../src/db.js';
 import { openEbooksStore } from '../store.js';
-import { makeImportHandler, destinationFor, sanitizeSegment } from '../importer.js';
+import { makeImportHandler, makeMediaHandler, destinationFor, sanitizeSegment } from '../importer.js';
 import { makeBooksClient } from '../metadata.js';
 import { epubBuffer, pdfBuffer } from './fixtures.js';
 
@@ -110,6 +110,32 @@ test('import: files the book into Author/[Series/]Title.ext and catalogs it', as
 
     // A vanished source is a clean failure.
     await assert.rejects(() => handler.import({ folder: path.join(loose, 'gone.epub') }), /gone/);
+  } finally { rm(); }
+});
+
+test('media handler: a downloaded book is filed like an import, the hint filling in what the file lacks', async () => {
+  const { shelf, loose, store, books, rm } = await setup();
+  try {
+    const handler = makeMediaHandler({ store, getClients: async () => [books] });
+    assert.equal(handler.type, 'ebook');
+    assert.deepEqual(handler.exts, ['.epub', '.pdf']);
+    // A release-named EPUB with no embedded title/author: the request's
+    // title and author name the shelf entry.
+    const src = path.join(loose, 'Some.Release.Name.EPUB-GRP.epub');
+    fs.writeFileSync(src, await epubBuffer('', { author: '' }));
+    const out = await handler.file({ path: loose, files: [src], libraryId: 1, hint: { title: 'Dune', author: 'Frank Herbert' } });
+    const dest = path.join(shelf, 'Frank Herbert', 'Dune.epub');
+    assert.equal(out.path, dest);
+    assert.ok(fs.existsSync(dest) && !fs.existsSync(src));
+    const s = store.db.prepare("SELECT * FROM series WHERE type='ebook'").get();
+    assert.equal(s.title, 'Dune');
+    assert.equal(s.id, out.seriesId);
+    assert.equal(store.db.prepare('SELECT file_path FROM issues WHERE id=?').get(out.issueId).file_path, dest);
+    // Embedded metadata still wins over the hint when the file has it.
+    const src2 = path.join(loose, 'x.epub');
+    fs.writeFileSync(src2, await epubBuffer('Elantris', { author: 'Brandon Sanderson' }));
+    const out2 = await handler.file({ path: loose, files: [src2], libraryId: 1, hint: { title: 'Wrong Title', author: 'Wrong Author' } });
+    assert.equal(out2.path, path.join(shelf, 'Brandon Sanderson', 'Elantris.epub'));
   } finally { rm(); }
 });
 

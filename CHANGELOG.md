@@ -8,6 +8,40 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+## [0.2.5] — 2026-09-12
+
+### Fixed
+
+- A book the metadata match moved onto a series shelf kept its cover but
+  lost its blurb and year: they had been written to the standalone shelf it
+  left behind, which was then pruned. They now travel with the book, and a
+  series shelf takes the first book's blurb and year until it has its own.
+  The file's rows follow the book as well, so it no longer shows as
+  "available on demand" — not yet downloaded — when it is on disk.
+- An on-demand book that had been fetched to disk still counted as not yet
+  downloaded ("available on demand"): the fetch recorded where the file
+  landed but never told the file index. It is owned from the moment it lands.
+
+### Added
+
+- **Add a book.** The app's Add button gains a Books tab where a Books
+  library exists: search the catalog, see what is already on the shelf, and
+  add a book — it goes on a wanted list and the download sources are asked
+  for it at once (by ISBN where the catalog has one). What no source has yet
+  is tried again by the new **Fill wanted books** job, or leaves the list
+  when a scan or import brings it in. `GET /api/ebooks/wanted` lists the
+  wanted books; `DELETE /api/ebooks/wanted/<id>` drops one.
+- **Downloads are filed.** A book the app's download sources fetched (an
+  approved request, for instance) is moved into the library as
+  Author/Series/Title.ext and catalogued like a scanned one, named from the
+  request's title and author. Needs app 0.8.4 or later; older apps simply
+  never hand anything over.
+- **Removing an on-demand source's entries.** `DELETE /api/ebooks/remote/<source>`
+  (library manage) drops every file-less entry that source put on the shelf,
+  with their issues and the series left empty, and forgets its sync cursor —
+  for a source plugin you have removed, or a shelf you want reset. A book it
+  had already fetched to a file stays, as an ordinary local book.
+
 ## [0.2.4] — 2026-09-11
 
 ### Added

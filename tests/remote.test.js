@@ -84,6 +84,51 @@ test('catalogRemote creates a file-less series/issue + ebooks_files(path NULL, s
   } finally { rm(); }
 });
 
+test('removeRemoteSource drops a source\'s file-less entries, their issues and empty series, and no one else\'s', () => {
+  const { store, libId, rm } = setup();
+  try {
+    const a = store.catalogRemote({ libraryId: libId, source: 'bw', remoteId: 'a', meta: meta('a', { title: 'Two Towers', series: 'Middle Earth', series_index: 2, author: 'Tolkien' }) });
+    store.catalogRemote({ libraryId: libId, source: 'bw', remoteId: 'b', meta: meta('b', { title: 'Fellowship', series: 'Middle Earth', series_index: 1, author: 'Tolkien' }) });
+    const other = store.catalogRemote({ libraryId: libId, source: 'elsewhere', remoteId: 'c', meta: meta('c', { title: 'Dune', author: 'Herbert' }) });
+    const removed = store.removeRemoteSource('bw');
+    assert.deepEqual(removed, { entries: 2, series: 1, adopted: 0 });
+    assert.equal(store.db.prepare("SELECT COUNT(*) n FROM ebooks_files WHERE source='bw'").get().n, 0);
+    assert.equal(store.db.prepare('SELECT COUNT(*) n FROM issues WHERE id=?').get(a.issueId).n, 0);
+    assert.equal(store.db.prepare('SELECT COUNT(*) n FROM series WHERE id=?').get(a.seriesId).n, 0, 'the emptied series is gone');
+    assert.equal(store.db.prepare('SELECT COUNT(*) n FROM issues WHERE id=?').get(other.issueId).n, 1, 'another source\'s entry stays');
+    assert.deepEqual(store.removeRemoteSource('bw'), { entries: 0, series: 0, adopted: 0 }, 'idempotent');
+  } finally { rm(); }
+});
+
+test('removeRemoteSource keeps a book the source had fetched to disk, as an ordinary local book', () => {
+  const { p, store, libId, rm } = setup();
+  try {
+    const shelf = path.join(p, 'shelf', 'Author r1');
+    fs.mkdirSync(shelf, { recursive: true });
+    const file = path.join(shelf, 'Book r1.epub');
+    fs.writeFileSync(file, Buffer.alloc(2048));
+    const { issueId, seriesId } = store.catalogRemote({ libraryId: libId, source: 'bw', remoteId: 'r1', meta: meta('r1') });
+    store.materializedPath(issueId, file, 2048, 7);
+    // On disk, so owned from the moment it landed.
+    assert.equal(store.db.prepare('SELECT file_path FROM issues WHERE id=?').get(issueId).file_path, file);
+    assert.equal(store.db.prepare('SELECT COUNT(*) n FROM library_files WHERE issue_id=? AND valid=1').get(issueId).n, 1);
+    // A second entry was fetched once but its file is gone — nothing to keep.
+    const { issueId: gone } = store.catalogRemote({ libraryId: libId, source: 'bw', remoteId: 'r2', meta: meta('r2') });
+    store.materializedPath(gone, path.join(shelf, 'vanished.epub'), 10, 1);
+
+    const removed = store.removeRemoteSource('bw');
+    assert.deepEqual(removed, { entries: 1, series: 1, adopted: 1 });
+    const ef = store.db.prepare('SELECT * FROM ebooks_files WHERE issue_id=?').get(issueId);
+    assert.deepEqual([ef.source, ef.remote_id, ef.path], [null, null, file], 'no longer a remote entry');
+    const i = store.db.prepare('SELECT url, file_path, series_id FROM issues WHERE id=?').get(issueId);
+    assert.equal(i.url, 'ebookfile:' + file);
+    assert.equal(i.file_path, file);
+    assert.equal(i.series_id, seriesId, 'stays on its shelf');
+    assert.equal(store.db.prepare('SELECT COUNT(*) n FROM issues WHERE id=?').get(gone).n, 0, 'the vanished one went with the rest');
+    assert.equal(store.known(file).source, null, 'the disk scanner sees an ordinary local file');
+  } finally { rm(); }
+});
+
 test('catalogRemote groups a calibre series into one series with issues', () => {
   const { store, libId, rm } = setup();
   try {

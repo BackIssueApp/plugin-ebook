@@ -12,7 +12,8 @@ import config from '../../src/config.js';
 import { openEbooksStore } from './store.js';
 import { scanLibraries, scanState, ebookLibraries } from './scanner.js';
 import { makeBooksClient, matchBookAcross, matchNewBooks } from './metadata.js';
-import { makeImportHandler } from './importer.js';
+import { makeImportHandler, makeMediaHandler } from './importer.js';
+import { registerCatalog } from './catalog.js';
 import { extractEpubOutline } from './extract.js';
 import {
   runRemoteSync, stopRemoteSync, remoteSyncStatus, isRemoteSyncRunning, materializeOnRead,
@@ -122,8 +123,17 @@ export default function register(api) {
   // service match, filed into the Books library on import (Author/Series/
   // Title.ext), cataloged like any scanned book.
   api.registerImportHandler?.(makeImportHandler({ store, getClients: matchClients }));
+  // A book the download sources fetched (usenet, torrent, a site source that
+  // serves ebooks — e.g. for an approved request) is filed the same way.
+  api.registerMediaHandler?.(makeMediaHandler({ store, getClients: matchClients }));
 
   const uid = (req) => req.user?.id ?? 0;
+  // The Add flow: search the catalog, want a book, ask the download sources.
+  // Wanted books are asked for again every few hours unless the Jobs page
+  // says otherwise (core carries no defaults for plugin jobs).
+  config.ebooksWantedCron ??= '0 */4 * * *';
+  config.ebooksWantedEnabled ??= true;
+  registerCatalog({ api, store, getClients: matchClients, uid, CAN_USE, CAN_MANAGE });
   const fileOr404 = (req, res) => {
     const f = store.fileByIssue(Number(req.params.id));
     if (!f) res.status(404).json({ error: 'not an ebook issue' });
@@ -311,6 +321,17 @@ export default function register(api) {
       resetCursor: !!resetCursor,
     }).catch((e) => { console.warn('[ebooks] remote sync failed:', e?.message || e); });
     res.json({ started: true, state: remoteSyncStatus() });
+  }, { access: CAN_MANAGE });
+
+  // DELETE /api/ebooks/remote/:source — drop every on-demand entry that
+  // source put on the shelf (its plugin was removed, or the shelf is being
+  // reset). Materialised files stay. Curation-tier, like the sync itself.
+  api.registerRoute('delete', '/api/ebooks/remote/:source', (req, res) => {
+    const source = String(req.params.source || '').trim();
+    if (!source) return res.status(400).json({ error: 'source required' });
+    const removed = store.removeRemoteSource(source);
+    console.log(`ebooks: removed ${removed.entries} on-demand entr${removed.entries === 1 ? 'y' : 'ies'} from ${source} (${removed.series} empty series dropped, ${removed.adopted} already-fetched file(s) kept as local books)`);
+    res.json({ source, removed });
   }, { access: CAN_MANAGE });
 
   // POST /api/ebooks/remote-sync/stop — cooperative cancel.

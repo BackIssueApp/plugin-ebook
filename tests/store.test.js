@@ -144,6 +144,38 @@ test('progress: per-user upsert with clamped fraction; stateMap feeds the row ic
   } finally { rm(); }
 });
 
+test('wanted books: added once per catalog id, found on the shelf by id, ISBN or title+author', () => {
+  const { p, store, libId, rm } = setup();
+  try {
+    const w = store.addWanted({ id: 'gb-1', title: 'Dune', author: 'Frank Herbert', year: '1965', isbn: '978-0-441-17271-9', cover: 'https://x/c.jpg' }, 7);
+    assert.ok(w.id > 0);
+    assert.equal(w.match_id, 'gb-1');
+    assert.equal(w.added_by, 7);
+    const again = store.addWanted({ id: 'gb-1', title: 'Dune (Deluxe)', author: 'Frank Herbert' }, 8);
+    assert.equal(again.id, w.id, 'one row per catalog id');
+    assert.equal(again.title, 'Dune (Deluxe)', 'asking again refreshes it');
+    assert.equal(store.listWanted().length, 1);
+    store.noteWantedTry(w.id, 'no source had it');
+    assert.equal(store.wantedById(w.id).last_error, 'no source had it');
+    assert.ok(store.wantedById(w.id).tried_at);
+    assert.equal(store.wantedByMatch('gb-1').id, w.id);
+
+    assert.equal(store.onShelf({ matchId: 'gb-1', isbn: '9780441172719', title: 'Dune', author: 'Frank Herbert' }), null, 'nothing on the shelf yet');
+    const { issueId, seriesId } = store.catalogFile({ libraryId: libId, path: file(p, 'dune.epub'), format: 'epub', size: 100, mtime: 1, meta: DUNE });
+    assert.deepEqual(store.onShelf({ title: 'Dune', author: 'Frank Herbert' }), { issueId, seriesId }, 'by title and author');
+    assert.deepEqual(store.onShelf({ title: 'Dune', author: 'Herbert' }), { issueId, seriesId }, 'a surname is enough');
+    assert.deepEqual(store.onShelf({ title: 'Dune: A Novel', author: 'Frank Herbert' }), { issueId, seriesId }, 'a subtitle does not make it another book');
+    assert.deepEqual(store.onShelf({ title: 'Dune (English Edition)', author: 'Frank Herbert' }), { issueId, seriesId }, 'nor a bracketed note');
+    assert.equal(store.onShelf({ title: 'Dune Messiah', author: 'Frank Herbert' }), null, 'a longer title is another book');
+    assert.equal(store.onShelf({ title: 'Dune', author: 'Someone Else' }), null, 'a contradicting author is not it');
+    assert.deepEqual(store.onShelf({ isbn: '978-0-441-17271-9' }), { issueId, seriesId }, 'by ISBN');
+    store.applyMatch(issueId, { match_id: 'gb-1', match_confidence: 'isbn' });
+    assert.deepEqual(store.onShelf({ matchId: 'gb-1' }), { issueId, seriesId }, 'by catalog id once matched');
+    assert.equal(store.removeWanted(w.id), 1);
+    assert.equal(store.listWanted().length, 0);
+  } finally { rm(); }
+});
+
 test('applyMatch folds service data into the catalog; misses are marked checked', () => {
   const { p, store, libId, rm } = setup();
   try {
@@ -196,10 +228,10 @@ test('applyMatch: a match-supplied series regroups standalone books into one she
     const b = store.catalogFile({ libraryId: libId, path: file(p, 'wor.epub'), format: 'epub', size: 100, mtime: 1, meta: bare('Words of Radiance') });
     assert.notEqual(a.seriesId, b.seriesId, 'they start as separate standalone shelves');
 
-    store.applyMatch(a.issueId, { match_id: 'hc-1', match_confidence: 'isbn', series_name: 'The Stormlight Archive', series_index: 1 });
-    store.applyMatch(b.issueId, { match_id: 'hc-2', match_confidence: 'isbn', series_name: 'The Stormlight Archive', series_index: 2 });
+    store.applyMatch(a.issueId, { match_id: 'hc-1', match_confidence: 'isbn', series_name: 'The Stormlight Archive', series_index: 1, description: 'Roshar is a world of stone and storms.', published_date: '2010-08-31', thumbnail: 'https://books.example/twok.jpg' });
+    store.applyMatch(b.issueId, { match_id: 'hc-2', match_confidence: 'isbn', series_name: 'The Stormlight Archive', series_index: 2, description: 'Six years later.', published_date: '2014-03-04' });
 
-    const rows = store.db.prepare(`SELECT i.issue_number, s.title AS series_title, s.id AS sid
+    const rows = store.db.prepare(`SELECT i.issue_number, s.title AS series_title, s.id AS sid, s.description, s.year, s.cover_url
       FROM issues i JOIN series s ON s.id = i.series_id
       WHERE i.id IN (?, ?) ORDER BY i.issue_number`).all(a.issueId, b.issueId);
     assert.equal(rows.length, 2);
@@ -207,6 +239,15 @@ test('applyMatch: a match-supplied series regroups standalone books into one she
     assert.equal(rows[1].series_title, 'The Stormlight Archive');
     assert.equal(rows[0].sid, rows[1].sid, 'both books now sit on ONE series shelf');
     assert.deepEqual(rows.map((r) => r.issue_number), ['1', '2'], 'ordered by series position');
+    // What the first book's match learned travels with it to the new shelf
+    // (the standalone row that held it is pruned); the second book does not
+    // overwrite it.
+    assert.equal(rows[0].description, 'Roshar is a world of stone and storms.', 'the blurb is carried to the series shelf');
+    assert.equal(rows[0].year, '2010', 'and the year');
+    assert.equal(rows[0].cover_url, `/api/ebooks/issue/${a.issueId}/cover`, 'and the cover');
+    // The file rows follow too — the shelf's owned count reads library_files.
+    assert.equal(store.db.prepare('SELECT series_id FROM library_files WHERE issue_id=?').get(a.issueId).series_id, rows[0].sid, 'library_files moved with the book');
+    assert.equal(store.db.prepare('SELECT series_id FROM ebooks_files WHERE issue_id=?').get(a.issueId).series_id, rows[0].sid);
 
     // The standalone rows they left behind are pruned, not orphaned.
     const orphans = store.db.prepare("SELECT COUNT(*) n FROM series WHERE id IN (?, ?)").get(a.seriesId, b.seriesId).n;

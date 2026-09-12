@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { ebookLibraries, allLibraryFolders, walkEbooks, formatOf, extractMeta } from './scanner.js';
+import { ebookLibraries, allLibraryFolders, walkEbooks, formatOf, extractMeta, EBOOK_EXTS } from './scanner.js';
 import { matchBookAcross } from './metadata.js';
 
 // Windows-safe path segment: strip reserved characters, keep it readable.
@@ -42,9 +42,18 @@ async function moveFile(src, dest) {
 }
 
 /** Read + identify one file: embedded metadata, then a best-effort service
- *  match (never fatal — an unmatched book still imports fine). */
-async function identify(getClients, filePath) {
+ *  match (never fatal — an unmatched book still imports fine). A `hint`
+ *  ({ title, author }) from whoever asked for the book fills in what the
+ *  file itself does not say — a downloaded EPUB is often tagged with its
+ *  release name, or with nothing at all. */
+async function identify(getClients, filePath, hint = null) {
   const meta = await extractMeta(await fsp.readFile(filePath), filePath);
+  if (hint) {
+    const untitled = !meta.title || meta.title_source !== 'embedded' || /^untitled$/i.test(meta.title);
+    if (hint.title && untitled) { meta.title = String(hint.title); meta.title_source = 'hint'; }
+    if (hint.author && !(meta.authors || []).length) meta.authors = String(hint.author).split(',').map((a) => a.trim()).filter(Boolean);
+    if (hint.isbn && !meta.isbn) meta.isbn = String(hint.isbn);
+  }
   let merged = null;
   try {
     const clients = typeof getClients === 'function' ? await getClients() : [getClients];
@@ -106,30 +115,50 @@ export function makeImportHandler({ store, getClients }) {
 
     // File a confirmed candidate into its Books library and catalog it.
     async import(candidate, { log = () => {} } = {}) {
-      const src = candidate.folder; // handler candidates key by file path
-      if (!fs.existsSync(src)) throw new Error(`file is gone: ${src}`);
-      const libs = ebookLibraries(store.db);
-      const lib = libs.find((l) => l.id === candidate.library_id) || libs[0];
-      if (!lib || !lib.folders.length) throw new Error('no Books library to file into');
-      const { meta, merged } = await identify(getClients, src);
-      let dest = destinationFor(lib, meta, merged, src);
-      // Collision with a DIFFERENT file → a numbered sibling; same path = already filed.
-      if (norm(dest) !== norm(src)) {
-        for (let n = 2; fs.existsSync(dest); n++) {
-          const ext = path.extname(dest);
-          dest = path.join(path.dirname(dest), path.basename(destinationFor(lib, meta, merged, src), ext) + ` (${n})` + ext);
-        }
-        await moveFile(src, dest);
-      }
-      const st = await fsp.stat(dest);
-      const { issueId } = store.catalogFile({
-        libraryId: lib.id, path: dest, format: formatOf(dest),
-        size: st.size, mtime: Math.round(st.mtimeMs), meta,
-      });
-      if (merged) store.applyMatch(issueId, merged);
-      else store.setMatchChecked(issueId);
-      log(`ebooks import: filed "${meta.title}" into ${lib.name}`);
-      return { issueId };
+      return fileBook({ store, getClients, src: candidate.folder, libraryId: candidate.library_id, log });
+    },
+  };
+}
+
+/** Identify one ebook file, move it into a Books library
+ *  (Author/[Series/]Title.ext) and catalog it. `src` is any readable .epub or
+ *  .pdf; `hint` ({ title, author }) fills in metadata the file lacks. Returns
+ *  { issueId, seriesId, path }. Shared by the Import tool and by media
+ *  downloads (a book fetched from a download source). */
+export async function fileBook({ store, getClients, src, libraryId = null, hint = null, log = () => {} }) {
+  if (!fs.existsSync(src)) throw new Error(`file is gone: ${src}`);
+  const libs = ebookLibraries(store.db);
+  const lib = libs.find((l) => l.id === libraryId) || libs[0];
+  if (!lib || !lib.folders.length) throw new Error('no Books library to file into');
+  const { meta, merged } = await identify(getClients, src, hint);
+  let dest = destinationFor(lib, meta, merged, src);
+  // Collision with a DIFFERENT file → a numbered sibling; same path = already filed.
+  if (norm(dest) !== norm(src)) {
+    for (let n = 2; fs.existsSync(dest); n++) {
+      const ext = path.extname(dest);
+      dest = path.join(path.dirname(dest), path.basename(destinationFor(lib, meta, merged, src), ext) + ` (${n})` + ext);
+    }
+    await moveFile(src, dest);
+  }
+  const st = await fsp.stat(dest);
+  const { issueId, seriesId } = store.catalogFile({
+    libraryId: lib.id, path: dest, format: formatOf(dest),
+    size: st.size, mtime: Math.round(st.mtimeMs), meta,
+  });
+  if (merged) store.applyMatch(issueId, merged);
+  else store.setMatchChecked(issueId);
+  log(`ebooks import: filed "${meta.title}" into ${lib.name}`);
+  return { issueId, seriesId, path: dest };
+}
+
+/** The registerMediaHandler implementation: a book a download source fetched
+ *  (an EPUB first, a PDF failing that) is filed like an imported one. */
+export function makeMediaHandler({ store, getClients }) {
+  return {
+    type: 'ebook',
+    exts: EBOOK_EXTS,
+    async file({ files, libraryId, hint, log = () => {} }) {
+      return fileBook({ store, getClients, src: files[0], libraryId, hint, log });
     },
   };
 }
