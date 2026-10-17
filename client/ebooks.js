@@ -23,6 +23,13 @@
   window.BackIssue.registerClient((api) => {
     const esc = api.escapeHtml;
     const icon = (n, o) => (api.icon && api.icon(n, o)) || '';
+    // Translations: api.t when the host has it (BackIssue > 0.9.0), the inline
+    // English otherwise. Catalog keys live under locales/<lang>.json.
+    const NS = 'ebooks.';
+    const fill = (str, p) => (p ? String(str).replace(/\{(\w+)\}/g, (m, k) => (p[k] === undefined || p[k] === null ? m : String(p[k]))) : String(str));
+    const tr = (key, en, params) => { if (typeof api.t !== 'function') return fill(en, params); const v = api.t(NS + key, params); return v === NS + key ? fill(en, params) : v; };
+    const te = (key, en, params) => esc(tr(key, en, params));
+    const lang = () => (typeof api.lang === 'function' ? api.lang() : undefined);
     const canUse = () => typeof api.can !== 'function' || api.can('ebooks.use');
 
     // The series page hands ebook series' whole issue area to this view
@@ -36,9 +43,10 @@
     // wrapper so they coexist). Visibility is per user and saved server-side,
     // so it follows the account rather than the browser.
     const EB_SHELVES = [
-      { key: 'eb-continue', pref: 'showContinue', title: 'Continue reading', facet: '{"status":"reading"}' },
-      { key: 'eb-new',      pref: 'showNew',      title: 'New books',        facet: null },
+      { key: 'eb-continue', pref: 'showContinue', title: ['rails.continueReading', 'Continue reading'], facet: '{"status":"reading"}' },
+      { key: 'eb-new',      pref: 'showNew',      title: ['rails.newBooks', 'New books'],               facet: null },
     ];
+    const shelfTitle = (sh) => tr(sh.title[0], sh.title[1]);
     let ebLibId;          // undefined = unresolved, null = none
     let ebPrefs = null;
     const ebShelfOn = (sh) => ((ebPrefs && sh.pref in ebPrefs) ? ebPrefs[sh.pref] !== false : true);
@@ -108,11 +116,11 @@
       head.className = 'ab-rail__head';
       const h = document.createElement('span');
       h.className = 'ab-rail__title';
-      h.textContent = shelf.title;
+      h.textContent = shelfTitle(shelf);
       const hide = document.createElement('button');
       hide.className = 'ab-rail__hide';
-      hide.title = 'Hide this rail — turn it back on from your Profile';
-      hide.setAttribute('aria-label', 'Hide ' + shelf.title);
+      hide.title = tr('rails.hideTitle', 'Hide this rail — turn it back on from your Profile');
+      hide.setAttribute('aria-label', tr('rails.hideAria', 'Hide {title}', { title: shelfTitle(shelf) }));
       hide.innerHTML = icon('close', { size: 16 }) || '×';
       hide.onclick = async () => {
         try { ebPrefs = await api.post('/api/ebooks/home-prefs', { [shelf.pref]: false }); }
@@ -144,7 +152,7 @@
       const label = document.createElement('span');
       label.className = 'ab-rail__label';
       const b = document.createElement('b');
-      b.textContent = it.title || 'Untitled';
+      b.textContent = it.title || tr('untitled', 'Untitled');
       label.appendChild(b);
       el.append(cover, label);
       if (it.publisher) {
@@ -166,11 +174,11 @@
         card = document.createElement('section');
         card.className = 'settings-section';
         card.id = 'ebooks-rails-prefs';
-        card.innerHTML = '<p class="modal__subhead">Book rails</p>'
-          + '<p class="modal__note">Which book rails appear on your home screen.</p>'
+        card.innerHTML = '<p class="modal__subhead">' + te('prefs.title', 'Book rails') + '</p>'
+          + '<p class="modal__note">' + te('prefs.note', 'Which book rails appear on your home screen.') + '</p>'
           + '<div class="ab-rails-prefs">'
           + EB_SHELVES.map((sh) => '<label class="ab-rails-row"><input type="checkbox" data-pref="'
-            + sh.pref + '"> ' + esc(sh.title) + '</label>').join('')
+            + sh.pref + '"> ' + esc(shelfTitle(sh)) + '</label>').join('')
           + '</div>';
         slot.appendChild(card);
         card.querySelectorAll('input[data-pref]').forEach((cb) => {
@@ -268,10 +276,10 @@
       },
       title: (i) => {
         const st = stateOf(i);
-        if (bookFormat(i) === 'pdf') return 'Open (browser PDF viewer)';
-        if (st && st.fraction >= FINISHED) return 'Read again';
-        if (st && st.fraction > 0) return 'Continue (' + Math.round(st.fraction * 100) + '%)';
-        return 'Read';
+        if (bookFormat(i) === 'pdf') return tr('actions.openPdf', 'Open (browser PDF viewer)');
+        if (st && st.fraction >= FINISHED) return tr('actions.readAgain', 'Read again');
+        if (st && st.fraction > 0) return tr('actions.continuePct', 'Continue ({pct}%)', { pct: Math.round(st.fraction * 100) });
+        return tr('actions.read', 'Read');
       },
       when: isBook,
       run: (i) => openBook(i),
@@ -281,7 +289,7 @@
     api.registerIssueAction && api.registerIssueAction({
       id: 'ebooks-download',
       icon: icon('download'),
-      title: 'Download book file',
+      title: () => tr('actions.downloadFile', 'Download book file'),
       when: isBook,
       run: (i) => {
         const a = document.createElement('a');
@@ -302,45 +310,45 @@
       el.className = 'ebr';
       el.setAttribute('role', 'dialog');
       el.innerHTML =
-        '<div class="ebr__stage"><div class="ebr__loading">Opening…</div></div>' +
-        '<div class="ebr__zone ebr__zone--left" title="Previous page"></div>' +
-        '<div class="ebr__zone ebr__zone--right" title="Next page"></div>' +
+        '<div class="ebr__stage"><div class="ebr__loading">' + te('reader.opening', 'Opening…') + '</div></div>' +
+        '<div class="ebr__zone ebr__zone--left" title="' + te('reader.prevPage', 'Previous page') + '"></div>' +
+        '<div class="ebr__zone ebr__zone--right" title="' + te('reader.nextPage', 'Next page') + '"></div>' +
         '<div class="ebr__top">' +
-          '<button class="ebr__btn ebr-back" title="Close (Esc)" aria-label="Close reader">' + icon('close') + '</button>' +
+          '<button class="ebr__btn ebr-back" title="' + te('reader.closeEsc', 'Close (Esc)') + '" aria-label="' + te('reader.closeReader', 'Close reader') + '">' + icon('close') + '</button>' +
           '<div class="ebr__title"></div>' +
           '<div class="ebr__count"></div>' +
           '<span class="ebr__spacer"></span>' +
-          '<button class="ebr__btn ebr-mark" title="Bookmark this place" aria-label="Bookmark this place">' + icon('plus') + '</button>' +
-          '<button class="ebr__btn ebr-marks" title="Bookmarks" aria-label="Bookmarks">' + icon('bookmark') + '</button>' +
-          '<button class="ebr__btn ebr-toc" title="Contents" aria-label="Contents">' + icon('list') + '</button>' +
-          '<button class="ebr__btn ebr-set" title="Display settings" aria-label="Display settings">' + icon('settings') + '</button>' +
+          '<button class="ebr__btn ebr-mark" title="' + te('reader.bookmarkHere', 'Bookmark this place') + '" aria-label="' + te('reader.bookmarkHere', 'Bookmark this place') + '">' + icon('plus') + '</button>' +
+          '<button class="ebr__btn ebr-marks" title="' + te('reader.bookmarks', 'Bookmarks') + '" aria-label="' + te('reader.bookmarks', 'Bookmarks') + '">' + icon('bookmark') + '</button>' +
+          '<button class="ebr__btn ebr-toc" title="' + te('reader.contents', 'Contents') + '" aria-label="' + te('reader.contents', 'Contents') + '">' + icon('list') + '</button>' +
+          '<button class="ebr__btn ebr-set" title="' + te('reader.displaySettings', 'Display settings') + '" aria-label="' + te('reader.displaySettings', 'Display settings') + '">' + icon('settings') + '</button>' +
         '</div>' +
         '<div class="ebr__bottom">' +
-          '<button class="ebr__btn ebr-prev" title="Previous page" aria-label="Previous page">' + icon('chevron-left') + '</button>' +
+          '<button class="ebr__btn ebr-prev" title="' + te('reader.prevPage', 'Previous page') + '" aria-label="' + te('reader.prevPage', 'Previous page') + '">' + icon('chevron-left') + '</button>' +
           '<div class="ebr__sliderwrap">' +
-            '<input class="ebr__slider" type="range" min="0" max="1" step="0.001" value="0" aria-label="Position">' +
+            '<input class="ebr__slider" type="range" min="0" max="1" step="0.001" value="0" aria-label="' + te('reader.position', 'Position') + '">' +
           '</div>' +
-          '<button class="ebr__btn ebr-next" title="Next page" aria-label="Next page">' + icon('chevron-right') + '</button>' +
+          '<button class="ebr__btn ebr-next" title="' + te('reader.nextPage', 'Next page') + '" aria-label="' + te('reader.nextPage', 'Next page') + '">' + icon('chevron-right') + '</button>' +
           '<div class="ebr__loc"></div>' +
         '</div>' +
         '<div class="ebr__settings">' +
-          '<label>Font size <span class="ebr__step">' +
-            '<button class="ebr__btn ebr-font-dn" aria-label="Smaller text">' + icon('minus') + '</button><b class="ebr-font-val"></b>' +
-            '<button class="ebr__btn ebr-font-up" aria-label="Larger text">' + icon('plus') + '</button></span></label>' +
-          '<label>Line spacing <span class="ebr__step">' +
-            '<button class="ebr__btn ebr-sp-dn" aria-label="Tighter lines">' + icon('minus') + '</button><b class="ebr-sp-val"></b>' +
-            '<button class="ebr__btn ebr-sp-up" aria-label="Looser lines">' + icon('plus') + '</button></span></label>' +
-          '<div class="ebr__themes" role="group" aria-label="Book theme">' +
-            ['light', 'sepia', 'dark'].map((t) => '<button class="ebr__themebtn" data-theme="' + t + '" title="' + t[0].toUpperCase() + t.slice(1) + '" aria-label="' + t + ' theme"></button>').join('') +
+          '<label>' + te('reader.fontSize', 'Font size') + ' <span class="ebr__step">' +
+            '<button class="ebr__btn ebr-font-dn" aria-label="' + te('reader.smallerText', 'Smaller text') + '">' + icon('minus') + '</button><b class="ebr-font-val"></b>' +
+            '<button class="ebr__btn ebr-font-up" aria-label="' + te('reader.largerText', 'Larger text') + '">' + icon('plus') + '</button></span></label>' +
+          '<label>' + te('reader.lineSpacing', 'Line spacing') + ' <span class="ebr__step">' +
+            '<button class="ebr__btn ebr-sp-dn" aria-label="' + te('reader.tighterLines', 'Tighter lines') + '">' + icon('minus') + '</button><b class="ebr-sp-val"></b>' +
+            '<button class="ebr__btn ebr-sp-up" aria-label="' + te('reader.looserLines', 'Looser lines') + '">' + icon('plus') + '</button></span></label>' +
+          '<div class="ebr__themes" role="group" aria-label="' + te('reader.bookTheme', 'Book theme') + '">' +
+            [['light', 'Light'], ['sepia', 'Sepia'], ['dark', 'Dark']].map(([t, en]) => '<button class="ebr__themebtn" data-theme="' + t + '" title="' + te('reader.theme.' + t, en) + '" aria-label="' + te('reader.themeAria', '{theme} theme', { theme: tr('reader.theme.' + t, en) }) + '"></button>').join('') +
           '</div>' +
         '</div>' +
         '<div class="ebr__toc">' +
-          '<div class="ebr__tochead"><span>Contents</span> <button class="ebr__btn ebr-toc-close" aria-label="Close contents">' + icon('close') + '</button></div>' +
+          '<div class="ebr__tochead"><span>' + te('reader.contents', 'Contents') + '</span> <button class="ebr__btn ebr-toc-close" aria-label="' + te('reader.closeContents', 'Close contents') + '">' + icon('close') + '</button></div>' +
           '<div class="ebr__toc-list"></div>' +
         '</div>' +
         // Bookmarks reuse the contents panel's styling — same drawer, own list.
         '<div class="ebr__toc ebr__toc--marks">' +
-          '<div class="ebr__tochead"><span>Bookmarks</span> <button class="ebr__btn ebr-marks-close" aria-label="Close bookmarks">' + icon('close') + '</button></div>' +
+          '<div class="ebr__tochead"><span>' + te('reader.bookmarks', 'Bookmarks') + '</span> <button class="ebr__btn ebr-marks-close" aria-label="' + te('reader.closeBookmarks', 'Close bookmarks') + '">' + icon('close') + '</button></div>' +
           '<div class="ebr__marks-list"></div>' +
         '</div>';
       document.body.appendChild(el);
@@ -356,13 +364,13 @@
       el.classList.remove('chrome-hidden');
       el.dataset.theme = prefs.theme;
       document.body.classList.add('ebr-open');
-      el.querySelector('.ebr__title').textContent = issue.title || 'Untitled';
+      el.querySelector('.ebr__title').textContent = issue.title || tr('untitled', 'Untitled');
       el.querySelector('.ebr__count').textContent = '';
       el.querySelector('.ebr__loc').textContent = '';
       el.querySelector('.ebr__settings').classList.remove('is-open');
       el.querySelector('.ebr__toc').classList.remove('is-open');
       const stage = el.querySelector('.ebr__stage');
-      stage.innerHTML = '<div class="ebr__loading">Opening…</div>';
+      stage.innerHTML = '<div class="ebr__loading">' + te('reader.opening', 'Opening…') + '</div>';
 
       try {
         // The engine: vendored foliate-js, loaded on first read (an ES module —
@@ -376,7 +384,7 @@
         if (!resp.ok) {
           let reason = '';
           try { reason = (await resp.json()).error || ''; } catch { /* not json */ }
-          throw new Error(reason || ('the server answered ' + resp.status));
+          throw new Error(reason || tr('reader.serverAnswered', 'the server answered {status}', { status: resp.status }));
         }
         const name = (diskFile(issue) || {}).name || 'book.epub';
         const file = new File([await resp.blob()], name, { type: 'application/epub+zip' });
@@ -402,8 +410,8 @@
         // still opens, offer it right there.
         const alt = alternativeFor(issue);
         stage.innerHTML = '<div class="ebr__loading ebr__fail">' +
-          '<div>Couldn’t open this book: ' + esc(String(e?.message || e)) + '.</div>' +
-          (alt ? '<button type="button" class="ebr__alt">Open the ' + esc((bookFormat(alt) || 'other').toUpperCase()) + ' copy instead</button>' : '') +
+          '<div>' + te('reader.openFailed', 'Couldn’t open this book: {reason}.', { reason: String(e?.message || e) }) + '</div>' +
+          (alt ? '<button type="button" class="ebr__alt">' + te('reader.openOtherCopy', 'Open the {format} copy instead', { format: (bookFormat(alt) || 'other').toUpperCase() }) + '</button>' : '') +
           '</div>';
         const altBtn = stage.querySelector('.ebr__alt');
         if (altBtn) altBtn.onclick = () => openBook(alt);
@@ -492,7 +500,7 @@
     function buildToc(toc) {
       const wrap = reader.el.querySelector('.ebr__toc-list');
       wrap.innerHTML = '';
-      if (!Array.isArray(toc) || !toc.length) { wrap.innerHTML = '<div class="ebr__note">No contents listing.</div>'; return; }
+      if (!Array.isArray(toc) || !toc.length) { wrap.innerHTML = '<div class="ebr__note">' + te('reader.noContents', 'No contents listing.') + '</div>'; return; }
       const render = (items) => {
         const ul = document.createElement('ul');
         for (const it of items) {
@@ -538,27 +546,27 @@
     async function addBookmarkHere() {
       if (!reader?.issue) return;
       const at = reader.here || reader.pending;
-      if (!at?.locator) return api.toast('Nothing to bookmark yet — turn a page first.', 'info');
+      if (!at?.locator) return api.toast(tr('bookmarks.nothingYet', 'Nothing to bookmark yet — turn a page first.'), 'info');
       try {
         await api.post('/api/ebooks/issue/' + reader.issue.id + '/bookmarks', {
           locator: at.locator, fraction: at.fraction || 0,
         });
-        api.toast('Bookmarked at ' + Math.round((at.fraction || 0) * 100) + '%', 'ok');
+        api.toast(tr('bookmarks.savedAt', 'Bookmarked at {pct}%', { pct: Math.round((at.fraction || 0) * 100) }), 'ok');
         const panel = reader.el.querySelector('.ebr__toc--marks');
         if (panel.classList.contains('is-open')) renderBookmarks();
-      } catch { api.toast('Could not save the bookmark.', 'error'); }
+      } catch { api.toast(tr('bookmarks.saveFailed', 'Could not save the bookmark.'), 'error'); }
     }
 
     async function renderBookmarks() {
       const wrap = reader?.el?.querySelector('.ebr__marks-list');
       if (!wrap || !reader?.issue) return;
-      wrap.textContent = 'Loading…';
+      wrap.textContent = tr('loading', 'Loading…');
       let marks = [];
       try { marks = (await api.get('/api/ebooks/issue/' + reader.issue.id + '/bookmarks')).bookmarks || []; }
-      catch { wrap.textContent = 'Could not load bookmarks.'; return; }
+      catch { wrap.textContent = tr('bookmarks.loadFailed', 'Could not load bookmarks.'); return; }
       if (!marks.length) {
-        wrap.innerHTML = '<div class="ebr__marks-empty">No bookmarks in this book yet. '
-          + 'Use the bookmark button to save your place.</div>';
+        wrap.innerHTML = '<div class="ebr__marks-empty">'
+          + te('bookmarks.empty', 'No bookmarks in this book yet. Use the bookmark button to save your place.') + '</div>';
         return;
       }
       wrap.replaceChildren(...marks.map((m) => {
@@ -567,21 +575,21 @@
         const go = document.createElement('button');
         go.className = 'ebr__mark-go';
         go.textContent = Math.round((m.fraction || 0) * 100) + '%' + (m.note ? ' · ' + m.note : '');
-        go.title = 'Jump to this bookmark';
+        go.title = tr('bookmarks.jump', 'Jump to this bookmark');
         go.onclick = () => {
-          reader.view?.goTo(m.locator).catch(() => api.toast('That bookmark could not be opened.', 'error'));
+          reader.view?.goTo(m.locator).catch(() => api.toast(tr('bookmarks.openFailed', 'That bookmark could not be opened.'), 'error'));
           reader.el.querySelector('.ebr__toc--marks').classList.remove('is-open');
         };
         const del = document.createElement('button');
         del.className = 'ebr__btn ebr__mark-del';
-        del.title = 'Remove this bookmark';
-        del.setAttribute('aria-label', 'Remove bookmark');
+        del.title = tr('bookmarks.removeTitle', 'Remove this bookmark');
+        del.setAttribute('aria-label', tr('bookmarks.removeAria', 'Remove bookmark'));
         del.innerHTML = icon('trash', { size: 15 });
         del.onclick = async () => {
           try {
             await fetch('/api/ebooks/bookmarks/' + m.id, { method: 'DELETE', headers: { 'content-type': 'application/json' } });
             renderBookmarks();
-          } catch { api.toast('Could not remove the bookmark.', 'error'); }
+          } catch { api.toast(tr('bookmarks.removeFailed', 'Could not remove the bookmark.'), 'error'); }
         };
         row.append(go, del);
         return row;
@@ -675,15 +683,15 @@
       try {
         const r = await ctx.post('/api/ebooks/issue/' + issue.id + '/rematch', {});
         if (r && r.error) api.toast(r.error, 'error');
-        else if (r && r.matched) { api.toast('Matched — metadata updated.', 'ok'); ctx.refresh(); }
-        else api.toast('No confident match found.', 'info');
-      } catch (e) { api.toast('Re-match failed: ' + String((e && e.message) || e), 'error'); }
+        else if (r && r.matched) { api.toast(tr('rematch.matched', 'Matched — metadata updated.'), 'ok'); ctx.refresh(); }
+        else api.toast(tr('rematch.noMatch', 'No confident match found.'), 'info');
+      } catch (e) { api.toast(tr('rematch.failed', 'Re-match failed: {error}', { error: String((e && e.message) || e) }), 'error'); }
     }
 
     function renderBooksView(container, ctx) {
       container.innerHTML = '';
       if (!canUse()) {
-        container.innerHTML = '<div class="ebk__empty">Reading books requires the “Books library” permission.</div>';
+        container.innerHTML = '<div class="ebk__empty">' + te('shelf.needPermission', 'Reading books requires the “Books library” permission.') + '</div>';
         return;
       }
 
@@ -693,14 +701,14 @@
       // file-less on-demand series would flash the empty message.
       const unknown = (ctx.issues || []).some((i) => i && i.id != null && !(i.id in bookInfo));
       if (unknown) {
-        container.innerHTML = '<div class="ebk__empty">Loading…</div>';
+        container.innerHTML = '<div class="ebk__empty">' + te('loading', 'Loading…') + '</div>';
         ensureBookInfo(ctx.issues).then(() => { if (container.isConnected) renderBooksView(container, ctx); });
         return;
       }
       shelfIssues = ctx.issues || [];
       const books = groupBooks(ctx.issues);
       if (!books.length) {
-        container.innerHTML = '<div class="ebk__empty">No readable books in this series yet. If files were moved or deleted, a library scan will tidy this up.</div>';
+        container.innerHTML = '<div class="ebk__empty">' + te('shelf.empty', 'No readable books in this series yet. If files were moved or deleted, a library scan will tidy this up.') + '</div>';
         return;
       }
 
@@ -724,8 +732,8 @@
           fmtCounts[f] = (fmtCounts[f] || 0) + 1;
         }
       }
-      const bits = [books.length + ' books'];
-      if (readCount) bits.push(readCount + ' read');
+      const bits = [tr('shelf.nBooks', books.length === 1 ? '{count} book' : '{count} books', { count: books.length })];
+      if (readCount) bits.push(tr('shelf.nRead', '{count} read', { count: readCount }));
       for (const [f, n] of Object.entries(fmtCounts)) bits.push(n + ' ' + f);
 
       const manage = ctx.can('library.manage');
@@ -733,7 +741,7 @@
 
       const fmtLinks = (b) => b.entries.map((e) => {
         const f = (bookFormat(e) || '').toUpperCase();
-        return '<a class="ebk__fmt" href="/api/ebooks/issue/' + e.id + '/file?dl=1" title="Download the ' + f + ' file">' + f + '</a>';
+        return '<a class="ebk__fmt" href="/api/ebooks/issue/' + e.id + '/file?dl=1" title="' + te('shelf.downloadFormat', 'Download the {format} file', { format: f }) + '">' + f + '</a>';
       }).join('');
 
       // Read-state vocabulary matches the issue rows: check = finished,
@@ -745,10 +753,10 @@
         const p = Math.round(frac * 100);
         const pdfOnly = bookFormat(b.primary) !== 'epub';
         const chip = done
-          ? '<span class="ebk__chip ebk__chip--done">' + icon('check', { size: 12 }) + 'Read</span>'
+          ? '<span class="ebk__chip ebk__chip--done">' + icon('check', { size: 12 }) + te('shelf.readDone', 'Read') + '</span>'
           : part ? '<span class="ebk__chip ebk__chip--part">' + icon('circle-half', { size: 12 }) + p + '%</span>' : '';
         const stateCls = done ? ' ebk__st--done' : part ? ' ebk__st--part' : '';
-        const stateText = done ? 'Finished' : part ? p + '% read' : (pdfOnly ? 'PDF' : 'Unread');
+        const stateText = done ? te('shelf.finished', 'Finished') : part ? te('shelf.pctRead', '{pct}% read', { pct: p }) : (pdfOnly ? 'PDF' : te('shelf.unread', 'Unread'));
         return '<div class="ebk__card" data-book="' + idx + '" role="button" tabindex="0">' +
           '<div class="ebk__cover" style="background:' + coverBg(b.primary.title) + '">' +
             icon('library', { size: 46 }) +
@@ -757,7 +765,7 @@
             chip +
             (part ? '<div class="ebk__bar"><div class="ebk__bar-fill" style="width:' + p + '%"></div></div>' : '') +
           '</div>' +
-          '<div class="ebk__card-title">' + esc(b.primary.title || 'Untitled') + '</div>' +
+          '<div class="ebk__card-title">' + esc(b.primary.title || tr('untitled', 'Untitled')) + '</div>' +
           '<div class="ebk__card-meta"><span class="ebk__st' + stateCls + '">' + stateText + '</span>' +
             '<span class="ebk__fmts">' + fmtLinks(b) + '</span></div>' +
         '</div>';
@@ -771,38 +779,38 @@
         const pdfOnly = bookFormat(b.primary) !== 'epub';
         const stateCls = done ? ' ebk__st--done' : part ? ' ebk__st--part' : '';
         const stateIcon = done ? icon('check', { size: 13 }) : part ? icon('circle-half', { size: 13 }) : '';
-        const stateText = done ? 'Finished' : part ? p + '% read' : (pdfOnly ? 'PDF' : 'Unread');
-        const readLabel = pdfOnly ? 'Open' : done ? 'Read again' : part ? 'Continue' : 'Read';
+        const stateText = done ? te('shelf.finished', 'Finished') : part ? te('shelf.pctRead', '{pct}% read', { pct: p }) : (pdfOnly ? 'PDF' : te('shelf.unread', 'Unread'));
+        const readLabel = pdfOnly ? te('shelf.open', 'Open') : done ? te('actions.readAgain', 'Read again') : part ? te('shelf.continue', 'Continue') : te('actions.read', 'Read');
         const readIcon = done ? icon('check', { size: 15 }) : icon('play', { size: 15 });
         return '<div class="ebk__row">' +
           '<span class="ebk__rowseq">' + esc(String(b.primary.number ?? '')) + '</span>' +
           '<div class="ebk__art" style="background:' + coverBg(b.primary.title) + '">' + icon('library', { size: 18 }) +
             '<img loading="lazy" alt="" src="/api/ebooks/issue/' + b.primary.id + '/cover"></div>' +
           '<div class="ebk__main">' +
-            '<div class="ebk__title">' + esc(b.primary.title || 'Untitled') + '</div>' +
+            '<div class="ebk__title">' + esc(b.primary.title || tr('untitled', 'Untitled')) + '</div>' +
             '<div class="ebk__meta"><span class="ebk__st' + stateCls + '">' + stateIcon + stateText + '</span>' +
               (part ? '<div class="ebk__bar ebk__bar--row"><div class="ebk__bar-fill" style="width:' + p + '%"></div></div>' : '') +
             '</div>' +
           '</div>' +
           '<span class="ebk__fmts">' + fmtLinks(b) + '</span>' +
           '<button class="ebk__read' + (done || part ? '' : ' ebk__read--primary') + '" data-read="' + idx + '" title="' +
-            (pdfOnly ? 'Open (browser PDF viewer)' : part ? 'Continue (' + p + '%)' : readLabel) + '">' +
+            (pdfOnly ? te('actions.openPdf', 'Open (browser PDF viewer)') : part ? te('actions.continuePct', 'Continue ({pct}%)', { pct: p }) : readLabel) + '">' +
             readIcon + ' ' + readLabel + '</button>' +
           (manage ? '<button class="ebk__rematch" data-rematch="' + idx +
-            '" title="Re-match this book against the metadata service">' + icon('diamond', { size: 15 }) + '</button>' : '') +
+            '" title="' + te('shelf.rematchTitle', 'Re-match this book against the metadata service') + '">' + icon('diamond', { size: 15 }) + '</button>' : '') +
         '</div>';
       };
 
       container.innerHTML =
         '<div class="ebk">' +
           '<div class="ebk__head">' +
-            '<div class="ebk__headline"><span class="ebk__h">Shelf</span>' +
+            '<div class="ebk__headline"><span class="ebk__h">' + te('shelf.heading', 'Shelf') + '</span>' +
               '<span class="ebk__stats">' + esc(bits.join(' · ')) + '</span></div>' +
             '<div class="ebk__thru"><div class="ebk__thru-track"><div class="ebk__thru-fill" style="width:' + thruPct + '%"></div></div>' +
-              '<span class="ebk__thru-txt">' + readCount + '/' + books.length + ' read</span></div>' +
-            '<div class="viewtoggle ebk__toggle" role="group" aria-label="Shelf view">' +
-              '<button class="viewtoggle__btn' + (shelfView === 'shelf' ? ' is-active' : '') + '" data-view="shelf" title="Shelf">' + icon('grid', { size: 15 }) + '</button>' +
-              '<button class="viewtoggle__btn' + (shelfView === 'list' ? ' is-active' : '') + '" data-view="list" title="List">' + icon('menu', { size: 15 }) + '</button>' +
+              '<span class="ebk__thru-txt">' + te('shelf.readThrough', '{read}/{total} read', { read: readCount, total: books.length }) + '</span></div>' +
+            '<div class="viewtoggle ebk__toggle" role="group" aria-label="' + te('shelf.viewAria', 'Shelf view') + '">' +
+              '<button class="viewtoggle__btn' + (shelfView === 'shelf' ? ' is-active' : '') + '" data-view="shelf" title="' + te('shelf.viewShelf', 'Shelf') + '">' + icon('grid', { size: 15 }) + '</button>' +
+              '<button class="viewtoggle__btn' + (shelfView === 'list' ? ' is-active' : '') + '" data-view="list" title="' + te('shelf.viewList', 'List') + '">' + icon('menu', { size: 15 }) + '</button>' +
             '</div>' +
           '</div>' +
           (shelfView === 'shelf'
@@ -891,14 +899,14 @@
     function progressActionsHtml(b) {
       const { done, part, p, pdfOnly, hasEpub } = bookState(b);
       const progCls = done ? ' ebs__prog--done' : part ? ' ebs__prog--part' : '';
-      const progText = done ? 'Finished' : part ? p + '% read' : 'Unread';
-      const readLabel = pdfOnly ? 'Open (PDF viewer)' : done ? 'Read again' : part ? 'Continue reading' : 'Read';
+      const progText = done ? te('shelf.finished', 'Finished') : part ? te('shelf.pctRead', '{pct}% read', { pct: p }) : te('shelf.unread', 'Unread');
+      const readLabel = pdfOnly ? te('detail.openPdf', 'Open (PDF viewer)') : done ? te('actions.readAgain', 'Read again') : part ? te('detail.continueReading', 'Continue reading') : te('actions.read', 'Read');
       const readIcon = done ? icon('check', { size: 15 }) : icon('play', { size: 15 });
       return '<div class="ebs__prog' + progCls + '"><div class="ebs__prog-track"><div class="ebs__prog-fill" style="width:' + (done ? 100 : p) + '%"></div></div>' +
           '<span class="ebs__prog-txt">' + progText + '</span></div>' +
         '<div class="ebs__actions">' +
           '<button class="btn btn--primary ebs__readbtn ebs-read">' + readIcon + ' ' + readLabel + '</button>' +
-          (hasEpub ? '<button class="btn btn--ghost ebs__markbtn ebs-mark">' + (done ? 'Mark unread' : 'Mark finished') + '</button>' : '') +
+          (hasEpub ? '<button class="btn btn--ghost ebs__markbtn ebs-mark">' + (done ? te('detail.markUnread', 'Mark unread') : te('detail.markFinished', 'Mark finished')) + '</button>' : '') +
         '</div>';
     }
 
@@ -920,20 +928,20 @@
         const size = Number(f.size);
         const meta = [
           Number.isFinite(size) && size > 0 ? (size / 1048576).toFixed(1) + ' MB' : null,
-          epub ? 'reads in-browser' : 'opens in PDF viewer',
+          epub ? tr('detail.readsInBrowser', 'reads in-browser') : tr('detail.opensInPdf', 'opens in PDF viewer'),
         ].filter(Boolean).join(' · ');
         const bi = bookInfoOf(e);
         const dead = !!(bi && bi.unavailable);
         return '<div class="ebs__file' + (dead ? ' is-dead' : '') + '">' +
           '<span class="ebs__file-ext ebs__file-ext--' + (epub ? 'epub' : 'pdf') + '">' + fmtU + '</span>' +
           '<div class="ebs__file-main">' +
-            '<div class="ebs__file-name">' + esc(f.name || '') + (dead ? ' <span class="ebs__file-flag">Unavailable</span>' : '') + '</div>' +
+            '<div class="ebs__file-name">' + esc(f.name || '') + (dead ? ' <span class="ebs__file-flag">' + te('detail.unavailable', 'Unavailable') + '</span>' : '') + '</div>' +
             '<div class="ebs__file-meta">' + esc(meta) + '</div>' +
-            (dead ? '<div class="ebs__file-dead">Not available from its source right now' + (bi.unavailableReason ? ': ' + esc(bi.unavailableReason) : '') + '. Opening it tries again.</div>' : '') +
+            (dead ? '<div class="ebs__file-dead">' + te('detail.deadNote', 'Not available from its source right now{reason}. Opening it tries again.', { reason: bi.unavailableReason ? ': ' + bi.unavailableReason : '' }) + '</div>' : '') +
           '</div>' +
           '<button class="ebs__file-read" data-file-read="' + i + '">' +
-            (epub ? (done ? 'Read again' : part ? 'Continue' : 'Read') : 'Open') + '</button>' +
-          '<a class="ebs__file-dl" href="/api/ebooks/issue/' + e.id + '/file?dl=1" title="Download ' + fmtU + '">' +
+            (epub ? (done ? te('actions.readAgain', 'Read again') : part ? te('shelf.continue', 'Continue') : te('actions.read', 'Read')) : te('shelf.open', 'Open')) + '</button>' +
+          '<a class="ebs__file-dl" href="/api/ebooks/issue/' + e.id + '/file?dl=1" title="' + te('detail.downloadFormat', 'Download {format}', { format: fmtU }) + '">' +
             icon('download', { size: 15 }) + '</a>' +
         '</div>';
       }).join('');
@@ -941,30 +949,30 @@
       // Details grid — only fields the catalog actually has (no pages/words).
       const added = det && det.added ? new Date(det.added) : null;
       const cells = [];
-      if (!standalone) cells.push(['Series', seriesTitle + ' #' + num]);
-      if (standalone && ctx.series && ctx.series.year) cells.push(['Published', String(ctx.series.year)]);
-      if (by) cells.push([String(by).includes(',') ? 'Authors' : 'Author', String(by)]);
-      if (det && det.language) cells.push(['Language', String(det.language)]);
+      if (!standalone) cells.push([tr('detail.series', 'Series'), seriesTitle + ' #' + num]);
+      if (standalone && ctx.series && ctx.series.year) cells.push([tr('detail.published', 'Published'), String(ctx.series.year)]);
+      if (by) cells.push([String(by).includes(',') ? tr('detail.authors', 'Authors') : tr('detail.author', 'Author'), String(by)]);
+      if (det && det.language) cells.push([tr('detail.language', 'Language'), String(det.language)]);
       if (det && det.isbn) cells.push(['ISBN', String(det.isbn)]);
       if (added && !isNaN(added)) {
-        cells.push(['Added', added.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })]);
+        cells.push([tr('detail.added', 'Added'), added.toLocaleDateString(lang(), { month: 'short', year: 'numeric' })]);
       }
       const cellsHtml = cells.map(([label, value]) =>
         '<div class="ebs__cell"><div class="ebs__cell-label">' + esc(label) + '</div>' +
         '<div class="ebs__cell-value">' + esc(value) + '</div></div>').join('');
 
-      return '<div class="ebs__sect">Files</div>' +
+      return '<div class="ebs__sect">' + te('detail.files', 'Files') + '</div>' +
         '<div class="ebs__files">' + fileRows + '</div>' +
-        (cellsHtml ? '<div class="ebs__sect">Details</div><div class="ebs__details">' + cellsHtml + '</div>' : '') +
+        (cellsHtml ? '<div class="ebs__sect">' + te('detail.details', 'Details') + '</div><div class="ebs__details">' + cellsHtml + '</div>' : '') +
         (part && hasEpub
           ? '<div class="ebs__resume">' + icon('bookmark', { size: 17 }) +
-              '<div class="ebs__resume-txt">You’re ' + p + '% through</div>' +
-              '<button class="ebs__resume-btn ebs-resume">Resume</button></div>'
+              '<div class="ebs__resume-txt">' + te('detail.through', 'You’re {pct}% through', { pct: p }) + '</div>' +
+              '<button class="ebs__resume-btn ebs-resume">' + te('detail.resume', 'Resume') + '</button></div>'
           : '') +
         (manage
-          ? '<div class="ebs__sect">Manage</div><div class="ebs__manage">' +
+          ? '<div class="ebs__sect">' + te('detail.manage', 'Manage') + '</div><div class="ebs__manage">' +
               '<button class="ebs__managebtn ebs-rematch"' + (busy ? ' disabled' : '') + '>' +
-                icon('diamond', { size: 15 }) + ' ' + (busy ? 'Matching…' : 'Re-match metadata') + '</button></div>'
+                icon('diamond', { size: 15 }) + ' ' + (busy ? te('detail.matching', 'Matching…') : te('detail.rematch', 'Re-match metadata')) + '</button></div>'
           : '');
     }
 
@@ -996,7 +1004,7 @@
             api.refreshIssueActions && api.refreshIssueActions();
             ctx.refresh();
           } catch (e) {
-            api.toast('Could not update read state: ' + String((e && e.message) || e), 'error');
+            api.toast(tr('detail.updateFailed', 'Could not update read state: {error}', { error: String((e && e.message) || e) }), 'error');
             mark.disabled = false;
           }
         };
@@ -1110,12 +1118,12 @@
           if (sheet) renderSheet();
         }).catch(() => {});
       }
-      const libName = (libNames && ctx.series && libNames[ctx.series.library_id]) || 'Books';
+      const libName = (libNames && ctx.series && libNames[ctx.series.library_id]) || tr('sheet.booksLibrary', 'Books');
 
       const crumb = standalone
-        ? libName + ' / ' + (b.primary.title || 'Untitled')
-        : seriesTitle + ' / Book ' + num;
-      const pos = standalone ? libName : seriesTitle + ' · Book ' + num + ' of ' + books.length;
+        ? libName + ' / ' + (b.primary.title || tr('untitled', 'Untitled'))
+        : seriesTitle + ' / ' + tr('sheet.bookN', 'Book {n}', { n: num });
+      const pos = standalone ? libName : seriesTitle + ' · ' + tr('sheet.bookNofM', 'Book {n} of {total}', { n: num, total: books.length });
       const by = (ctx.series && ctx.series.publisher) || '';
 
       // Standalone series carry the book's own description; calibre-series
@@ -1126,20 +1134,20 @@
 
       sheet.el.querySelector('.ebs__panel').innerHTML =
         '<div class="ebs__head"><div class="ebs__head-in">' +
-          '<button class="ebs__hbtn ebs-back" title="Back to shelf" aria-label="Back to shelf">' + icon('arrow-left', { size: 16 }) + '</button>' +
+          '<button class="ebs__hbtn ebs-back" title="' + te('sheet.backToShelf', 'Back to shelf') + '" aria-label="' + te('sheet.backToShelf', 'Back to shelf') + '">' + icon('arrow-left', { size: 16 }) + '</button>' +
           '<div class="ebs__crumb">' + esc(crumb) + '</div>' +
-          '<button class="ebs__hbtn ebs-prev" title="Previous book" aria-label="Previous book"' + (idx <= 0 ? ' disabled' : '') + '>' + icon('chevron-left', { size: 15 }) + '</button>' +
-          '<button class="ebs__hbtn ebs-next" title="Next book" aria-label="Next book"' + (idx >= books.length - 1 ? ' disabled' : '') + '>' + icon('chevron-right', { size: 15 }) + '</button>' +
-          '<button class="ebs__hbtn ebs__hbtn--bare ebs-close" title="Close (Esc)" aria-label="Close">' + icon('close', { size: 16 }) + '</button>' +
+          '<button class="ebs__hbtn ebs-prev" title="' + te('sheet.prevBook', 'Previous book') + '" aria-label="' + te('sheet.prevBook', 'Previous book') + '"' + (idx <= 0 ? ' disabled' : '') + '>' + icon('chevron-left', { size: 15 }) + '</button>' +
+          '<button class="ebs__hbtn ebs-next" title="' + te('sheet.nextBook', 'Next book') + '" aria-label="' + te('sheet.nextBook', 'Next book') + '"' + (idx >= books.length - 1 ? ' disabled' : '') + '>' + icon('chevron-right', { size: 15 }) + '</button>' +
+          '<button class="ebs__hbtn ebs__hbtn--bare ebs-close" title="' + te('reader.closeEsc', 'Close (Esc)') + '" aria-label="' + te('sheet.close', 'Close') + '">' + icon('close', { size: 16 }) + '</button>' +
         '</div></div>' +
         '<div class="ebs__scroll">' +
           '<div class="ebs__hero"><div class="ebs__hero-in">' +
             '<div class="ebs__cover" style="background:' + coverBg(b.primary.title, true) + '">' + icon('library', { size: 42 }) +
               '<img alt="" src="/api/ebooks/issue/' + b.primary.id + '/cover"></div>' +
             '<div class="ebs__herobody">' +
-              '<div class="ebs__tagrow"><span class="ebs__tag">Book</span><span class="ebs__pos">' + esc(pos) + '</span></div>' +
-              '<h2 class="ebs__title">' + esc(b.primary.title || 'Untitled') + '</h2>' +
-              (by ? '<div class="ebs__author">by <b>' + esc(String(by)) + '</b></div>' : '') +
+              '<div class="ebs__tagrow"><span class="ebs__tag">' + te('sheet.bookTag', 'Book') + '</span><span class="ebs__pos">' + esc(pos) + '</span></div>' +
+              '<h2 class="ebs__title">' + esc(b.primary.title || tr('untitled', 'Untitled')) + '</h2>' +
+              (by ? '<div class="ebs__author">' + te('sheet.by', 'by') + ' <b>' + esc(String(by)) + '</b></div>' : '') +
               progressActionsHtml(b) +
             '</div>' +
           '</div></div>' +
