@@ -1,0 +1,152 @@
+{
+  "untitled": "无标题",
+  "loading": "加载中…",
+  "rails": {
+    "continueReading": "继续阅读",
+    "newBooks": "新书",
+    "hideTitle": "隐藏此栏——可在个人资料中重新开启",
+    "hideAria": "隐藏 {title}"
+  },
+  "prefs": {
+    "title": "图书栏目",
+    "note": "选择在主屏幕上显示哪些图书栏目。"
+  },
+  "actions": {
+    "read": "阅读",
+    "readAgain": "重新阅读",
+    "continuePct": "继续（{pct}%）",
+    "openPdf": "打开（浏览器 PDF 查看器）",
+    "downloadFile": "下载图书文件"
+  },
+  "reader": {
+    "opening": "正在打开…",
+    "prevPage": "上一页",
+    "nextPage": "下一页",
+    "closeEsc": "关闭（Esc）",
+    "closeReader": "关闭阅读器",
+    "bookmarkHere": "为此处添加书签",
+    "bookmarks": "书签",
+    "contents": "目录",
+    "displaySettings": "显示设置",
+    "position": "位置",
+    "fontSize": "字号",
+    "smallerText": "缩小文字",
+    "largerText": "放大文字",
+    "lineSpacing": "行距",
+    "tighterLines": "减小行距",
+    "looserLines": "增大行距",
+    "bookTheme": "图书主题",
+    "theme": {
+      "light": "浅色",
+      "sepia": "护眼",
+      "dark": "深色"
+    },
+    "themeAria": "{theme}主题",
+    "closeContents": "关闭目录",
+    "closeBookmarks": "关闭书签",
+    "serverAnswered": "服务器返回 {status}",
+    "openFailed": "无法打开此书：{reason}。",
+    "openOtherCopy": "改为打开 {format} 版本",
+    "noContents": "没有目录。"
+  },
+  "bookmarks": {
+    "nothingYet": "还没有可添加书签的位置——请先翻一页。",
+    "savedAt": "已在 {pct}% 处添加书签",
+    "saveFailed": "无法保存书签。",
+    "loadFailed": "无法加载书签。",
+    "empty": "这本书还没有书签。使用书签按钮保存阅读位置。",
+    "jump": "跳转到此书签",
+    "openFailed": "无法打开该书签。",
+    "removeTitle": "删除此书签",
+    "removeAria": "删除书签",
+    "removeFailed": "无法删除书签。"
+  },
+  "rematch": {
+    "matched": "已匹配——元数据已更新。",
+    "noMatch": "未找到可靠的匹配。",
+    "failed": "重新匹配失败：{error}"
+  },
+  "shelf": {
+    "needPermission": "阅读图书需要“图书书库”权限。",
+    "empty": "此系列中还没有可阅读的图书。如果文件已被移动或删除，扫描书库即可整理。",
+    "nBooks": {
+      "other": "{count} 本"
+    },
+    "nRead": "已读 {count}",
+    "downloadFormat": "下载 {format} 文件",
+    "readDone": "已读",
+    "finished": "已读完",
+    "pctRead": "已读 {pct}%",
+    "unread": "未读",
+    "open": "打开",
+    "continue": "继续",
+    "rematchTitle": "在元数据服务中重新匹配此书",
+    "heading": "书架",
+    "readThrough": "已读 {read}/{total}",
+    "viewAria": "书架视图",
+    "viewShelf": "书架",
+    "viewList": "列表"
+  },
+  "detail": {
+    "openPdf": "打开（PDF 查看器）",
+    "continueReading": "继续阅读",
+    "markUnread": "标记为未读",
+    "markFinished": "标记为已读完",
+    "readsInBrowser": "在浏览器中阅读",
+    "opensInPdf": "在 PDF 查看器中打开",
+    "unavailable": "不可用",
+    "deadNote": "目前无法从来源获取{reason}。打开时会重试。",
+    "downloadFormat": "下载 {format}",
+    "series": "系列",
+    "published": "出版",
+    "author": "作者",
+    "authors": "作者",
+    "language": "语言",
+    "added": "添加于",
+    "files": "文件",
+    "details": "详情",
+    "through": "已读到 {pct}%",
+    "resume": "继续",
+    "manage": "管理",
+    "matching": "匹配中…",
+    "rematch": "重新匹配元数据",
+    "updateFailed": "无法更新阅读状态：{error}"
+  },
+  "sheet": {
+    "booksLibrary": "图书",
+    "bookN": "第 {n} 本",
+    "bookNofM": "第 {n} 本，共 {total} 本",
+    "backToShelf": "返回书架",
+    "prevBook": "上一本",
+    "nextBook": "下一本",
+    "close": "关闭",
+    "bookTag": "图书",
+    "by": "作者："
+  },
+  "_shared": {
+    "plugins": {
+      "ebooks": {
+        "description": "电子书书库：用于 EPUB/PDF 的图书书库类型——图书作为普通书库系列编目，带内嵌及补充的元数据；导入工具支持电子书文件；浏览器内 EPUB 阅读器按用户保存进度"
+      }
+    },
+    "libraryTypes": {
+      "ebook": "图书"
+    },
+    "permissions": {
+      "ebooks": {
+        "use": {
+          "label": "图书书库",
+          "description": "在浏览器中阅读 EPUB 并下载图书文件"
+        }
+      }
+    },
+    "jobs": {
+      "ebooks-wanted": {
+        "label": "补齐缺失的图书"
+      },
+      "ebooks-scan": {
+        "label": "扫描图书书库"
+      }
+    }
+  }
+}

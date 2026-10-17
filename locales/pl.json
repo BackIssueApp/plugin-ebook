@@ -1,0 +1,155 @@
+{
+  "untitled": "Bez tytułu",
+  "loading": "Wczytywanie…",
+  "rails": {
+    "continueReading": "Czytaj dalej",
+    "newBooks": "Nowe książki",
+    "hideTitle": "Ukryj ten pas — możesz go ponownie włączyć w swoim profilu",
+    "hideAria": "Ukryj {title}"
+  },
+  "prefs": {
+    "title": "Pasy książek",
+    "note": "Które pasy książek pojawiają się na ekranie głównym."
+  },
+  "actions": {
+    "read": "Czytaj",
+    "readAgain": "Czytaj ponownie",
+    "continuePct": "Kontynuuj ({pct}%)",
+    "openPdf": "Otwórz (przeglądarka PDF)",
+    "downloadFile": "Pobierz plik książki"
+  },
+  "reader": {
+    "opening": "Otwieranie…",
+    "prevPage": "Poprzednia strona",
+    "nextPage": "Następna strona",
+    "closeEsc": "Zamknij (Esc)",
+    "closeReader": "Zamknij czytnik",
+    "bookmarkHere": "Dodaj zakładkę w tym miejscu",
+    "bookmarks": "Zakładki",
+    "contents": "Spis treści",
+    "displaySettings": "Ustawienia wyświetlania",
+    "position": "Pozycja",
+    "fontSize": "Rozmiar czcionki",
+    "smallerText": "Mniejszy tekst",
+    "largerText": "Większy tekst",
+    "lineSpacing": "Odstęp między wierszami",
+    "tighterLines": "Mniejszy odstęp",
+    "looserLines": "Większy odstęp",
+    "bookTheme": "Motyw książki",
+    "theme": {
+      "light": "Jasny",
+      "sepia": "Sepia",
+      "dark": "Ciemny"
+    },
+    "themeAria": "Motyw {theme}",
+    "closeContents": "Zamknij spis treści",
+    "closeBookmarks": "Zamknij zakładki",
+    "serverAnswered": "serwer odpowiedział {status}",
+    "openFailed": "Nie udało się otworzyć tej książki: {reason}.",
+    "openOtherCopy": "Otwórz zamiast tego kopię {format}",
+    "noContents": "Brak spisu treści."
+  },
+  "bookmarks": {
+    "nothingYet": "Nie ma jeszcze czego zapisać — najpierw przewróć stronę.",
+    "savedAt": "Zakładka przy {pct}%",
+    "saveFailed": "Nie udało się zapisać zakładki.",
+    "loadFailed": "Nie udało się wczytać zakładek.",
+    "empty": "W tej książce nie ma jeszcze zakładek. Użyj przycisku zakładki, aby zapisać miejsce.",
+    "jump": "Przejdź do tej zakładki",
+    "openFailed": "Nie udało się otworzyć tej zakładki.",
+    "removeTitle": "Usuń tę zakładkę",
+    "removeAria": "Usuń zakładkę",
+    "removeFailed": "Nie udało się usunąć zakładki."
+  },
+  "rematch": {
+    "matched": "Dopasowano — metadane zaktualizowane.",
+    "noMatch": "Nie znaleziono pewnego dopasowania.",
+    "failed": "Ponowne dopasowanie nie powiodło się: {error}"
+  },
+  "shelf": {
+    "needPermission": "Czytanie książek wymaga uprawnienia „Biblioteka książek”.",
+    "empty": "W tej serii nie ma jeszcze książek do czytania. Jeśli pliki zostały przeniesione lub usunięte, skanowanie biblioteki to uporządkuje.",
+    "nBooks": {
+      "one": "{count} książka",
+      "few": "{count} książki",
+      "many": "{count} książek",
+      "other": "{count} książki"
+    },
+    "nRead": "Przeczytane: {count}",
+    "downloadFormat": "Pobierz plik {format}",
+    "readDone": "Przeczytana",
+    "finished": "Ukończona",
+    "pctRead": "Przeczytano {pct}%",
+    "unread": "Nieprzeczytana",
+    "open": "Otwórz",
+    "continue": "Kontynuuj",
+    "rematchTitle": "Dopasuj ponownie tę książkę w usłudze metadanych",
+    "heading": "Półka",
+    "readThrough": "Przeczytano {read}/{total}",
+    "viewAria": "Widok półki",
+    "viewShelf": "Półka",
+    "viewList": "Lista"
+  },
+  "detail": {
+    "openPdf": "Otwórz (przeglądarka PDF)",
+    "continueReading": "Czytaj dalej",
+    "markUnread": "Oznacz jako nieprzeczytaną",
+    "markFinished": "Oznacz jako ukończoną",
+    "readsInBrowser": "czyta się w przeglądarce",
+    "opensInPdf": "otwiera się w przeglądarce PDF",
+    "unavailable": "Niedostępne",
+    "deadNote": "Obecnie niedostępne w swoim źródle{reason}. Otwarcie spróbuje ponownie.",
+    "downloadFormat": "Pobierz {format}",
+    "series": "Seria",
+    "published": "Wydano",
+    "author": "Autor",
+    "authors": "Autorzy",
+    "language": "Język",
+    "added": "Dodano",
+    "files": "Pliki",
+    "details": "Szczegóły",
+    "through": "Przeczytano {pct}%",
+    "resume": "Wznów",
+    "manage": "Zarządzaj",
+    "matching": "Dopasowywanie…",
+    "rematch": "Dopasuj metadane ponownie",
+    "updateFailed": "Nie udało się zaktualizować stanu czytania: {error}"
+  },
+  "sheet": {
+    "booksLibrary": "Książki",
+    "bookN": "Książka {n}",
+    "bookNofM": "Książka {n} z {total}",
+    "backToShelf": "Wróć na półkę",
+    "prevBook": "Poprzednia książka",
+    "nextBook": "Następna książka",
+    "close": "Zamknij",
+    "bookTag": "Książka",
+    "by": "autor:"
+  },
+  "_shared": {
+    "plugins": {
+      "ebooks": {
+        "description": "Biblioteka e-booków: typ biblioteki Książki dla EPUB/PDF — książki katalogowane jak zwykłe serie biblioteki z osadzonymi i wzbogaconymi metadanymi, pliki e-booków w narzędziu importu oraz czytnik EPUB w przeglądarce z postępem dla każdego użytkownika"
+      }
+    },
+    "libraryTypes": {
+      "ebook": "Książki"
+    },
+    "permissions": {
+      "ebooks": {
+        "use": {
+          "label": "Biblioteka książek",
+          "description": "Czytanie plików EPUB w przeglądarce i pobieranie plików książek"
+        }
+      }
+    },
+    "jobs": {
+      "ebooks-wanted": {
+        "label": "Uzupełnij brakujące książki"
+      },
+      "ebooks-scan": {
+        "label": "Skanuj biblioteki książek"
+      }
+    }
+  }
+}

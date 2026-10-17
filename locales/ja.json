@@ -1,0 +1,152 @@
+{
+  "untitled": "無題",
+  "loading": "読み込み中…",
+  "rails": {
+    "continueReading": "続きを読む",
+    "newBooks": "新着の書籍",
+    "hideTitle": "この棚を非表示にします（プロフィールから再表示できます）",
+    "hideAria": "{title} を非表示"
+  },
+  "prefs": {
+    "title": "書籍の棚",
+    "note": "ホーム画面に表示する書籍の棚を選びます。"
+  },
+  "actions": {
+    "read": "読む",
+    "readAgain": "もう一度読む",
+    "continuePct": "続きを読む（{pct}%）",
+    "openPdf": "開く（ブラウザーの PDF ビューアー）",
+    "downloadFile": "書籍ファイルをダウンロード"
+  },
+  "reader": {
+    "opening": "開いています…",
+    "prevPage": "前のページ",
+    "nextPage": "次のページ",
+    "closeEsc": "閉じる（Esc）",
+    "closeReader": "リーダーを閉じる",
+    "bookmarkHere": "この位置をブックマーク",
+    "bookmarks": "ブックマーク",
+    "contents": "目次",
+    "displaySettings": "表示設定",
+    "position": "位置",
+    "fontSize": "文字サイズ",
+    "smallerText": "文字を小さく",
+    "largerText": "文字を大きく",
+    "lineSpacing": "行間",
+    "tighterLines": "行間を狭く",
+    "looserLines": "行間を広く",
+    "bookTheme": "書籍のテーマ",
+    "theme": {
+      "light": "ライト",
+      "sepia": "セピア",
+      "dark": "ダーク"
+    },
+    "themeAria": "{theme}テーマ",
+    "closeContents": "目次を閉じる",
+    "closeBookmarks": "ブックマークを閉じる",
+    "serverAnswered": "サーバーの応答：{status}",
+    "openFailed": "この書籍を開けませんでした：{reason}。",
+    "openOtherCopy": "代わりに {format} 版を開く",
+    "noContents": "目次がありません。"
+  },
+  "bookmarks": {
+    "nothingYet": "まだブックマークできる位置がありません。先にページをめくってください。",
+    "savedAt": "{pct}% の位置をブックマークしました",
+    "saveFailed": "ブックマークを保存できませんでした。",
+    "loadFailed": "ブックマークを読み込めませんでした。",
+    "empty": "この書籍にはまだブックマークがありません。ブックマークボタンで位置を保存できます。",
+    "jump": "このブックマークへ移動",
+    "openFailed": "このブックマークを開けませんでした。",
+    "removeTitle": "このブックマークを削除",
+    "removeAria": "ブックマークを削除",
+    "removeFailed": "ブックマークを削除できませんでした。"
+  },
+  "rematch": {
+    "matched": "一致しました。メタデータを更新しました。",
+    "noMatch": "確実な一致が見つかりませんでした。",
+    "failed": "再照合に失敗しました：{error}"
+  },
+  "shelf": {
+    "needPermission": "書籍を読むには「書籍ライブラリ」の権限が必要です。",
+    "empty": "このシリーズにはまだ読める書籍がありません。ファイルを移動または削除した場合は、ライブラリをスキャンすると整理されます。",
+    "nBooks": {
+      "other": "{count} 冊"
+    },
+    "nRead": "既読 {count}",
+    "downloadFormat": "{format} ファイルをダウンロード",
+    "readDone": "既読",
+    "finished": "読了",
+    "pctRead": "{pct}% 読了",
+    "unread": "未読",
+    "open": "開く",
+    "continue": "続きを読む",
+    "rematchTitle": "メタデータサービスでこの書籍を再照合",
+    "heading": "本棚",
+    "readThrough": "既読 {read}/{total}",
+    "viewAria": "本棚の表示",
+    "viewShelf": "本棚",
+    "viewList": "リスト"
+  },
+  "detail": {
+    "openPdf": "開く（PDF ビューアー）",
+    "continueReading": "続きを読む",
+    "markUnread": "未読にする",
+    "markFinished": "読了にする",
+    "readsInBrowser": "ブラウザーで読めます",
+    "opensInPdf": "PDF ビューアーで開きます",
+    "unavailable": "利用できません",
+    "deadNote": "現在ソースから利用できません{reason}。開くと再試行します。",
+    "downloadFormat": "{format} をダウンロード",
+    "series": "シリーズ",
+    "published": "出版",
+    "author": "著者",
+    "authors": "著者",
+    "language": "言語",
+    "added": "追加日",
+    "files": "ファイル",
+    "details": "詳細",
+    "through": "{pct}% まで読みました",
+    "resume": "再開",
+    "manage": "管理",
+    "matching": "照合中…",
+    "rematch": "メタデータを再照合",
+    "updateFailed": "読書状況を更新できませんでした：{error}"
+  },
+  "sheet": {
+    "booksLibrary": "書籍",
+    "bookN": "第 {n} 巻",
+    "bookNofM": "第 {n} 巻 / 全 {total} 巻",
+    "backToShelf": "本棚に戻る",
+    "prevBook": "前の書籍",
+    "nextBook": "次の書籍",
+    "close": "閉じる",
+    "bookTag": "書籍",
+    "by": "著："
+  },
+  "_shared": {
+    "plugins": {
+      "ebooks": {
+        "description": "電子書籍ライブラリ：EPUB/PDF 用の書籍ライブラリ種別。書籍を埋め込み・補完メタデータ付きの通常のシリーズとして管理し、取り込みツールで電子書籍ファイルを扱い、ユーザーごとの進捗に対応したブラウザー内 EPUB リーダーを備えます"
+      }
+    },
+    "libraryTypes": {
+      "ebook": "書籍"
+    },
+    "permissions": {
+      "ebooks": {
+        "use": {
+          "label": "書籍ライブラリ",
+          "description": "ブラウザーで EPUB を読み、書籍ファイルをダウンロードします"
+        }
+      }
+    },
+    "jobs": {
+      "ebooks-wanted": {
+        "label": "未入手の書籍を補充"
+      },
+      "ebooks-scan": {
+        "label": "書籍ライブラリをスキャン"
+      }
+    }
+  }
+}
