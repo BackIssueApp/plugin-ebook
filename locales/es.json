@@ -36,7 +36,11 @@
     "tighterLines": "Líneas más juntas",
     "looserLines": "Líneas más separadas",
     "bookTheme": "Tema del libro",
-    "theme": { "light": "Claro", "sepia": "Sepia", "dark": "Oscuro" },
+    "theme": {
+      "light": "Claro",
+      "sepia": "Sepia",
+      "dark": "Oscuro"
+    },
     "themeAria": "Tema {theme}",
     "closeContents": "Cerrar el índice",
     "closeBookmarks": "Cerrar los marcadores",
@@ -65,7 +69,10 @@
   "shelf": {
     "needPermission": "Para leer libros se necesita el permiso “Biblioteca de libros”.",
     "empty": "Todavía no hay libros legibles en esta serie. Si se movieron o borraron archivos, un escaneo de la biblioteca lo pondrá en orden.",
-    "nBooks": { "one": "{count} libro", "other": "{count} libros" },
+    "nBooks": {
+      "one": "{count} libro",
+      "other": "{count} libros"
+    },
     "nRead": "{count} leídos",
     "downloadFormat": "Descargar el archivo {format}",
     "readDone": "Leído",
@@ -116,5 +123,31 @@
     "close": "Cerrar",
     "bookTag": "Libro",
     "by": "de"
+  },
+  "_shared": {
+    "plugins": {
+      "ebooks": {
+        "description": "Biblioteca de libros electrónicos: un tipo de biblioteca Libros para EPUB/PDF; los libros aparecen como series normales con metadatos incrustados y enriquecidos, archivos de libros en la herramienta Importar y un lector EPUB en el navegador con progreso por usuario"
+      }
+    },
+    "libraryTypes": {
+      "ebook": "Libros"
+    },
+    "permissions": {
+      "ebooks": {
+        "use": {
+          "label": "Biblioteca de libros",
+          "description": "Leer EPUB en el navegador y descargar archivos de libros"
+        }
+      }
+    },
+    "jobs": {
+      "ebooks-wanted": {
+        "label": "Conseguir los libros pendientes"
+      },
+      "ebooks-scan": {
+        "label": "Escanear las bibliotecas de libros"
+      }
+    }
   }
 }

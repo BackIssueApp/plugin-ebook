@@ -36,7 +36,11 @@
     "tighterLines": "Regels dichter bij elkaar",
     "looserLines": "Regels verder uit elkaar",
     "bookTheme": "Boekthema",
-    "theme": { "light": "Licht", "sepia": "Sepia", "dark": "Donker" },
+    "theme": {
+      "light": "Licht",
+      "sepia": "Sepia",
+      "dark": "Donker"
+    },
     "themeAria": "Thema {theme}",
     "closeContents": "Inhoud sluiten",
     "closeBookmarks": "Bladwijzers sluiten",
@@ -65,7 +69,10 @@
   "shelf": {
     "needPermission": "Voor het lezen van boeken is de machtiging ‘Boekenbibliotheek’ nodig.",
     "empty": "Nog geen leesbare boeken in deze reeks. Als bestanden zijn verplaatst of verwijderd, ruimt een bibliotheekscan dit op.",
-    "nBooks": { "one": "{count} boek", "other": "{count} boeken" },
+    "nBooks": {
+      "one": "{count} boek",
+      "other": "{count} boeken"
+    },
     "nRead": "{count} gelezen",
     "downloadFormat": "Het {format}-bestand downloaden",
     "readDone": "Gelezen",
@@ -116,5 +123,31 @@
     "close": "Sluiten",
     "bookTag": "Boek",
     "by": "door"
+  },
+  "_shared": {
+    "plugins": {
+      "ebooks": {
+        "description": "E-boekbibliotheek: een bibliotheektype Boeken voor EPUB/PDF; boeken verschijnen als gewone reeksen met ingesloten en verrijkte metadata, e-boekbestanden in de Import-tool en een EPUB-lezer in de browser met voortgang per gebruiker"
+      }
+    },
+    "libraryTypes": {
+      "ebook": "Boeken"
+    },
+    "permissions": {
+      "ebooks": {
+        "use": {
+          "label": "Boekenbibliotheek",
+          "description": "EPUB’s in de browser lezen en boekbestanden downloaden"
+        }
+      }
+    },
+    "jobs": {
+      "ebooks-wanted": {
+        "label": "Gezochte boeken ophalen"
+      },
+      "ebooks-scan": {
+        "label": "Boekenbibliotheken scannen"
+      }
+    }
   }
 }

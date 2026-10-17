@@ -36,7 +36,11 @@
     "tighterLines": "Tighter lines",
     "looserLines": "Looser lines",
     "bookTheme": "Book theme",
-    "theme": { "light": "Light", "sepia": "Sepia", "dark": "Dark" },
+    "theme": {
+      "light": "Light",
+      "sepia": "Sepia",
+      "dark": "Dark"
+    },
     "themeAria": "{theme} theme",
     "closeContents": "Close contents",
     "closeBookmarks": "Close bookmarks",
@@ -65,7 +69,10 @@
   "shelf": {
     "needPermission": "Reading books requires the “Books library” permission.",
     "empty": "No readable books in this series yet. If files were moved or deleted, a library scan will tidy this up.",
-    "nBooks": { "one": "{count} book", "other": "{count} books" },
+    "nBooks": {
+      "one": "{count} book",
+      "other": "{count} books"
+    },
     "nRead": "{count} read",
     "downloadFormat": "Download the {format} file",
     "readDone": "Read",
@@ -116,5 +123,31 @@
     "close": "Close",
     "bookTag": "Book",
     "by": "by"
+  },
+  "_shared": {
+    "plugins": {
+      "ebooks": {
+        "description": "Ebook library: a Books library type for EPUB/PDF — books catalog as regular library series with embedded + enriched metadata, ebook files in the Import tool, and an in-browser EPUB reader with per-user progress"
+      }
+    },
+    "libraryTypes": {
+      "ebook": "Books"
+    },
+    "permissions": {
+      "ebooks": {
+        "use": {
+          "label": "Books library",
+          "description": "Read EPUBs in the browser and download book files"
+        }
+      }
+    },
+    "jobs": {
+      "ebooks-wanted": {
+        "label": "Fill wanted books"
+      },
+      "ebooks-scan": {
+        "label": "Scan book libraries"
+      }
+    }
   }
 }

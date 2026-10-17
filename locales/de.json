@@ -36,7 +36,11 @@
     "tighterLines": "Engere Zeilen",
     "looserLines": "Weitere Zeilen",
     "bookTheme": "Buchdesign",
-    "theme": { "light": "Hell", "sepia": "Sepia", "dark": "Dunkel" },
+    "theme": {
+      "light": "Hell",
+      "sepia": "Sepia",
+      "dark": "Dunkel"
+    },
     "themeAria": "Design {theme}",
     "closeContents": "Inhalt schließen",
     "closeBookmarks": "Lesezeichen schließen",
@@ -65,7 +69,10 @@
   "shelf": {
     "needPermission": "Zum Lesen von Büchern ist die Berechtigung „Bücherbibliothek“ nötig.",
     "empty": "Noch keine lesbaren Bücher in dieser Reihe. Wurden Dateien verschoben oder gelöscht, räumt ein Bibliotheksscan hier auf.",
-    "nBooks": { "one": "{count} Buch", "other": "{count} Bücher" },
+    "nBooks": {
+      "one": "{count} Buch",
+      "other": "{count} Bücher"
+    },
     "nRead": "{count} gelesen",
     "downloadFormat": "{format}-Datei herunterladen",
     "readDone": "Gelesen",
@@ -116,5 +123,31 @@
     "close": "Schließen",
     "bookTag": "Buch",
     "by": "von"
+  },
+  "_shared": {
+    "plugins": {
+      "ebooks": {
+        "description": "E-Book-Bibliothek: ein Bibliothekstyp „Bücher“ für EPUB/PDF — Bücher als normale Reihen mit eingebetteten und angereicherten Metadaten, E-Book-Dateien im Import-Werkzeug und ein EPUB-Reader im Browser mit Fortschritt pro Nutzer"
+      }
+    },
+    "libraryTypes": {
+      "ebook": "Bücher"
+    },
+    "permissions": {
+      "ebooks": {
+        "use": {
+          "label": "Bücher-Bibliothek",
+          "description": "EPUBs im Browser lesen und Buchdateien herunterladen"
+        }
+      }
+    },
+    "jobs": {
+      "ebooks-wanted": {
+        "label": "Gesuchte Bücher beschaffen"
+      },
+      "ebooks-scan": {
+        "label": "Bücher-Bibliotheken scannen"
+      }
+    }
   }
 }

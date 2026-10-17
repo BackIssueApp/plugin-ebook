@@ -15,6 +15,8 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
   BackIssue builds newer than 0.9.0, and stay English on older ones.
   Translations ship for French, German, Spanish, Italian, Portuguese and
   Dutch in `locales/`.
+  Also covers the permission, job and library-type labels, the plugin
+  description and the notification titles shown in BackIssue’s own screens.
 
 ## [0.2.5] — 2026-09-12
 
