@@ -126,6 +126,37 @@
     "bookTag": "Książka",
     "by": "autor:"
   },
+  "wanted": {
+    "tab": "Książki",
+    "loading": "Wczytywanie…",
+    "loadFailed": "Nie udało się wczytać listy poszukiwanych.",
+    "emptyTitle": "Nic nie jest poszukiwane",
+    "empty": "Tytuły dodane z katalogu przyciskiem + Dodaj są tu, dopóki źródło ich nie dostarczy.",
+    "count": {
+      "one": "{n} poszukiwana książka.",
+      "few": "{n} poszukiwane książki.",
+      "many": "{n} poszukiwanych książek.",
+      "other": "{n} poszukiwanej książki."
+    },
+    "schedule": "Każdy jest szukany ponownie według harmonogramu „Uzupełnij brakujące książki”.",
+    "added": "Dodano {date}",
+    "tried": "Ostatnio szukano {date}",
+    "triedFailed": "Ostatnio szukano {date}: {outcome}",
+    "notTried": "Jeszcze nie szukano",
+    "searchNow": "Szukaj teraz",
+    "searching": "Szukanie…",
+    "cancel": "Anuluj",
+    "cancelled": "{title} nie jest już poszukiwany.",
+    "cancelFailed": "Nie udało się anulować: {error}",
+    "inLibrary": "{title} jest w bibliotece.",
+    "downloading": "{title} jest pobierany.",
+    "alreadyDownloading": "{title} jest już pobierany.",
+    "noMatch": "Żadne źródło nie ma jeszcze {title}. Pozostaje poszukiwany.",
+    "noSources": "Nie włączono żadnego źródła pobierania z książkami (Ustawienia → Pobieranie).",
+    "noLibrary": "Nie ma biblioteki typu Książki, do której można go dodać. Utwórz ją w Ustawienia → Biblioteka.",
+    "unsupported": "Ten serwer jest za stary, aby pobierać książki.",
+    "failed": "Wyszukiwanie nie powiodło się: {error}"
+  },
   "_shared": {
     "plugins": {
       "ebooks": {

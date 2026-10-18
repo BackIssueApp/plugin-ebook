@@ -124,6 +124,35 @@
     "bookTag": "Livro",
     "by": "de"
   },
+  "wanted": {
+    "tab": "Livros",
+    "loading": "Carregando…",
+    "loadFailed": "Não foi possível carregar a lista de procurados.",
+    "emptyTitle": "Nada procurado",
+    "empty": "Os títulos que você adiciona do catálogo com + Adicionar aparecem aqui até uma fonte entregá-los.",
+    "count": {
+      "one": "{n} livro procurado.",
+      "other": "{n} livros procurados."
+    },
+    "schedule": "Cada um é procurado de novo conforme o agendamento \"Obter os livros em falta\".",
+    "added": "Adicionado em {date}",
+    "tried": "Última busca em {date}",
+    "triedFailed": "Última busca em {date}: {outcome}",
+    "notTried": "Ainda não buscado",
+    "searchNow": "Buscar agora",
+    "searching": "Buscando…",
+    "cancel": "Cancelar",
+    "cancelled": "{title} não é mais procurado.",
+    "cancelFailed": "Não foi possível cancelar: {error}",
+    "inLibrary": "{title} está na biblioteca.",
+    "downloading": "{title} está sendo baixado.",
+    "alreadyDownloading": "{title} já está sendo baixado.",
+    "noMatch": "Nenhuma fonte tem {title} ainda. Continua procurado.",
+    "noSources": "Nenhuma fonte de download com livros está ativada (Configurações → Downloads).",
+    "noLibrary": "Não há uma biblioteca de livros para guardá-lo. Crie uma em Configurações → Biblioteca.",
+    "unsupported": "Este servidor é antigo demais para baixar livros.",
+    "failed": "A busca falhou: {error}"
+  },
   "_shared": {
     "plugins": {
       "ebooks": {

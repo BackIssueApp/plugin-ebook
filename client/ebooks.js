@@ -32,6 +32,93 @@
     const lang = () => (typeof api.lang === 'function' ? api.lang() : undefined);
     const canUse = () => typeof api.can !== 'function' || api.can('ebooks.use');
 
+    // ---------- Wanted tab ----------
+    // Titles asked for from the catalog that no source has delivered yet, as
+    // a tab on core's Wanted page (registerWantedTab; older cores lack it).
+    // Searched for again on the schedule, or now; cancel drops one.
+    (function wantedTab() {
+      if (typeof api.registerWantedTab !== 'function') return;
+      const BASE = '/api/ebooks/wanted';
+      const hasLibrary = () => (api.libraries ? api.libraries() : []).some((l) => l.type === 'ebook');
+      let tries = 0;
+      (function register() {
+        if (!hasLibrary()) { if (++tries < 40) setTimeout(register, 250); return; }
+        api.registerWantedTab({ id: 'ebooks', label: () => tr('wanted.tab', 'Books'), render: load });
+      })();
+      const day = (iso) => { try { return new Date(iso).toLocaleDateString(typeof api.lang === 'function' ? api.lang() : undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return String(iso || '').slice(0, 10); } };
+      // What a search attempt (or the last one) came to, in words.
+      const outcome = (status, title, error) => {
+        switch (status) {
+          case 'imported': case 'on-shelf': return tr('wanted.inLibrary', '{title} is in the library.', { title });
+          case 'grabbed': case 'downloading': return tr('wanted.downloading', '{title} is downloading.', { title });
+          case 'active': return tr('wanted.alreadyDownloading', '{title} is already downloading.', { title });
+          case 'no-match': return tr('wanted.noMatch', 'No source has {title} yet. It stays wanted.', { title });
+          case 'no-sources': return tr('wanted.noSources', 'No download source that carries books is turned on (Settings → Downloading).');
+          case 'no-library': return tr('wanted.noLibrary', 'There is no Books library to file it in. Create one under Settings → Library.');
+          case 'unsupported': return tr('wanted.unsupported', 'This server is too old to download books.');
+          default: return tr('wanted.failed', 'The search failed: {error}', { error: error || status || '?' });
+        }
+      };
+      const KNOWN = ['no-match', 'no-sources', 'no-library', 'unsupported'];
+      async function load(box, ctx) {
+        box.innerHTML = '<div class="pw-wanted__note">' + te('wanted.loading', 'Loading…') + '</div>';
+        let rows;
+        try { rows = (await ctx.get(BASE)).wanted; } catch { rows = null; }
+        if (!Array.isArray(rows)) { box.innerHTML = '<div class="pw-wanted__note pw-wanted__note--bad">' + te('wanted.loadFailed', 'Couldn’t load the wanted list.') + '</div>'; return; }
+        paint(box, ctx, rows);
+      }
+      function paint(box, ctx, rows) {
+        const manage = ctx.can('library.manage');
+        if (!rows.length) {
+          box.innerHTML = '<div class="pw-wanted__empty"><b>' + te('wanted.emptyTitle', 'Nothing wanted') + '</b><p>' + te('wanted.empty', 'Titles you add from the catalog with + Add show here until a source delivers them.') + '</p></div>';
+          return;
+        }
+        const n = rows.length;
+        box.innerHTML = '<p class="pw-wanted__sum">' + esc(tr('wanted.count', n === 1 ? '{n} book wanted.' : '{n} books wanted.', { count: n, n })) + ' ' + te('wanted.schedule', 'Each one is searched for again on the Fill wanted books schedule.') + '</p><div class="pw-wanted__list"></div>';
+        const list = box.querySelector('.pw-wanted__list');
+        for (const w of rows) {
+          const row = document.createElement('div');
+          row.className = 'pw-wanted__row';
+          const cover = w.cover ? api.safeUrl(w.cover) : '';
+          const by = [w.author, w.year].filter(Boolean).join(' · ');
+          const tried = w.tried_at
+            ? (w.last_error
+              ? tr('wanted.triedFailed', 'Last searched {date}: {outcome}', { date: day(w.tried_at), outcome: KNOWN.includes(w.last_error) ? outcome(w.last_error, w.title) : w.last_error })
+              : tr('wanted.tried', 'Last searched {date}', { date: day(w.tried_at) }))
+            : tr('wanted.notTried', 'Not searched yet');
+          row.innerHTML =
+            '<span class="pw-wanted__cover">' + (cover ? '<img loading="lazy" alt="" referrerpolicy="no-referrer" src="' + esc(cover) + '">' : '') + '</span>' +
+            '<span class="pw-wanted__main"><span class="pw-wanted__title">' + esc(w.title) + '</span>' +
+              (by ? '<span class="pw-wanted__by">' + esc(by) + '</span>' : '') +
+              '<span class="pw-wanted__meta">' + te('wanted.added', 'Added {date}', { date: day(w.added_at) }) + ' · ' + esc(tried) + '</span></span>' +
+            (manage ? '<span class="pw-wanted__actions">' +
+              '<button type="button" class="btn btn--ghost pw-wanted__retry">' + te('wanted.searchNow', 'Search now') + '</button>' +
+              '<button type="button" class="btn btn--ghost pw-wanted__cancel">' + te('wanted.cancel', 'Cancel') + '</button></span>' : '');
+          const img = row.querySelector('img');
+          if (img) img.onerror = () => img.remove();
+          const retry = row.querySelector('.pw-wanted__retry');
+          if (retry) retry.onclick = async () => {
+            retry.disabled = true; retry.textContent = tr('wanted.searching', 'Searching…');
+            let r;
+            try { r = await ctx.post(BASE + '/' + w.id + '/retry'); } catch (e) { r = { status: 'error', error: String(e && e.message || e) }; }
+            const good = ['imported', 'on-shelf', 'grabbed', 'downloading', 'active'].includes(r && r.status);
+            ctx.toast(outcome(r && r.status, w.title, r && r.error), good ? 'ok' : (r && r.status === 'no-match' ? 'info' : 'warn'));
+            load(box, ctx);
+          };
+          const cancel = row.querySelector('.pw-wanted__cancel');
+          if (cancel) cancel.onclick = async () => {
+            cancel.disabled = true;
+            let r;
+            try { r = await ctx.del(BASE + '/' + w.id); } catch (e) { r = { error: String(e && e.message || e) }; }
+            if (r && r.error) { cancel.disabled = false; ctx.toast(tr('wanted.cancelFailed', 'Couldn’t cancel: {error}', { error: r.error }), 'error'); return; }
+            ctx.toast(tr('wanted.cancelled', '{title} is no longer wanted.', { title: w.title }), 'ok');
+            paint(box, ctx, rows.filter((x) => x.id !== w.id));
+          };
+          list.appendChild(row);
+        }
+      }
+    })();
+
     // The series page hands ebook series' whole issue area to this view
     // (core's registerSeriesView) — registered before the permission gate so
     // the page always has a view (it explains itself to roles without the

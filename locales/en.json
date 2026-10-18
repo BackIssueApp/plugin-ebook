@@ -124,6 +124,35 @@
     "bookTag": "Book",
     "by": "by"
   },
+  "wanted": {
+    "tab": "Books",
+    "loading": "Loading…",
+    "loadFailed": "Couldn’t load the wanted list.",
+    "emptyTitle": "Nothing wanted",
+    "empty": "Titles you add from the catalog with + Add show here until a source delivers them.",
+    "count": {
+      "one": "{n} book wanted.",
+      "other": "{n} books wanted."
+    },
+    "schedule": "Each one is searched for again on the Fill wanted books schedule.",
+    "added": "Added {date}",
+    "tried": "Last searched {date}",
+    "triedFailed": "Last searched {date}: {outcome}",
+    "notTried": "Not searched yet",
+    "searchNow": "Search now",
+    "searching": "Searching…",
+    "cancel": "Cancel",
+    "cancelled": "{title} is no longer wanted.",
+    "cancelFailed": "Couldn’t cancel: {error}",
+    "inLibrary": "{title} is in the library.",
+    "downloading": "{title} is downloading.",
+    "alreadyDownloading": "{title} is already downloading.",
+    "noMatch": "No source has {title} yet. It stays wanted.",
+    "noSources": "No download source that carries books is turned on (Settings → Downloading).",
+    "noLibrary": "There is no Books library to file it in. Create one under Settings → Library.",
+    "unsupported": "This server is too old to download books.",
+    "failed": "The search failed: {error}"
+  },
   "_shared": {
     "plugins": {
       "ebooks": {

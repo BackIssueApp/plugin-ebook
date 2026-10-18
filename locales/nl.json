@@ -124,6 +124,35 @@
     "bookTag": "Boek",
     "by": "door"
   },
+  "wanted": {
+    "tab": "Boeken",
+    "loading": "Laden…",
+    "loadFailed": "De lijst met gezochte titels kon niet worden geladen.",
+    "emptyTitle": "Niets gezocht",
+    "empty": "Titels die je met + Toevoegen uit de catalogus haalt, staan hier tot een bron ze levert.",
+    "count": {
+      "one": "{n} boek gezocht.",
+      "other": "{n} boeken gezocht."
+    },
+    "schedule": "Elke titel wordt opnieuw gezocht volgens het schema ‘Gezochte boeken ophalen’.",
+    "added": "Toegevoegd op {date}",
+    "tried": "Laatst gezocht op {date}",
+    "triedFailed": "Laatst gezocht op {date}: {outcome}",
+    "notTried": "Nog niet gezocht",
+    "searchNow": "Nu zoeken",
+    "searching": "Zoeken…",
+    "cancel": "Annuleren",
+    "cancelled": "{title} wordt niet meer gezocht.",
+    "cancelFailed": "Annuleren mislukt: {error}",
+    "inLibrary": "{title} staat in de bibliotheek.",
+    "downloading": "{title} wordt gedownload.",
+    "alreadyDownloading": "{title} wordt al gedownload.",
+    "noMatch": "Nog geen bron heeft {title}. De titel blijft gezocht.",
+    "noSources": "Er staat geen downloadbron voor boeken aan (Instellingen → Downloaden).",
+    "noLibrary": "Er is geen boekenbibliotheek om het in op te bergen. Maak er een aan onder Instellingen → Bibliotheek.",
+    "unsupported": "Deze server is te oud om boeken te downloaden.",
+    "failed": "Het zoeken is mislukt: {error}"
+  },
   "_shared": {
     "plugins": {
       "ebooks": {

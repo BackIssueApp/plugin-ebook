@@ -8,6 +8,14 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+### Added
+
+- **Wanted books have a screen.** The Wanted page gets a Books tab
+  listing every book you asked for that hasn't arrived, with when its last
+  search ran and what it found. **Search now** tries the sources again without
+  waiting for Fill wanted books, and **Cancel** drops it. Needs BackIssue 0.9.2 or
+  newer; older versions keep the list API only.
+
 ### Fixed
 
 - **Remote catalogs keep updating after the first full sync.** Once a sync had

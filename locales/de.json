@@ -124,6 +124,35 @@
     "bookTag": "Buch",
     "by": "von"
   },
+  "wanted": {
+    "tab": "Bücher",
+    "loading": "Wird geladen…",
+    "loadFailed": "Die Liste der gesuchten Titel konnte nicht geladen werden.",
+    "emptyTitle": "Nichts gesucht",
+    "empty": "Titel, die du über + Hinzufügen aus dem Katalog holst, stehen hier, bis eine Quelle sie liefert.",
+    "count": {
+      "one": "{n} Buch gesucht.",
+      "other": "{n} Bücher gesucht."
+    },
+    "schedule": "Jeder wird nach dem Zeitplan „Gesuchte Bücher beschaffen“ erneut gesucht.",
+    "added": "Hinzugefügt am {date}",
+    "tried": "Zuletzt gesucht am {date}",
+    "triedFailed": "Zuletzt gesucht am {date}: {outcome}",
+    "notTried": "Noch nicht gesucht",
+    "searchNow": "Jetzt suchen",
+    "searching": "Wird gesucht…",
+    "cancel": "Abbrechen",
+    "cancelled": "{title} wird nicht mehr gesucht.",
+    "cancelFailed": "Abbrechen fehlgeschlagen: {error}",
+    "inLibrary": "{title} ist in der Bibliothek.",
+    "downloading": "{title} wird heruntergeladen.",
+    "alreadyDownloading": "{title} wird bereits heruntergeladen.",
+    "noMatch": "Noch keine Quelle hat {title}. Der Titel bleibt gesucht.",
+    "noSources": "Keine Downloadquelle für Bücher ist eingeschaltet (Einstellungen → Download).",
+    "noLibrary": "Es gibt keine Bücher-Bibliothek zum Ablegen. Lege eine unter Einstellungen → Bibliothek an.",
+    "unsupported": "Dieser Server ist zu alt, um Bücher herunterzuladen.",
+    "failed": "Die Suche ist fehlgeschlagen: {error}"
+  },
   "_shared": {
     "plugins": {
       "ebooks": {

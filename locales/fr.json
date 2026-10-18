@@ -124,6 +124,35 @@
     "bookTag": "Livre",
     "by": "par"
   },
+  "wanted": {
+    "tab": "Livres",
+    "loading": "Chargement…",
+    "loadFailed": "Impossible de charger la liste des titres recherchés.",
+    "emptyTitle": "Rien de recherché",
+    "empty": "Les titres ajoutés depuis le catalogue avec + Ajouter apparaissent ici jusqu’à ce qu’une source les livre.",
+    "count": {
+      "one": "{n} livre recherché.",
+      "other": "{n} livres recherchés."
+    },
+    "schedule": "Chacun est recherché à nouveau selon la planification « Récupérer les livres manquants ».",
+    "added": "Ajouté le {date}",
+    "tried": "Dernière recherche le {date}",
+    "triedFailed": "Dernière recherche le {date} : {outcome}",
+    "notTried": "Pas encore recherché",
+    "searchNow": "Rechercher maintenant",
+    "searching": "Recherche…",
+    "cancel": "Annuler",
+    "cancelled": "{title} n’est plus recherché.",
+    "cancelFailed": "Impossible d’annuler : {error}",
+    "inLibrary": "{title} est dans la bibliothèque.",
+    "downloading": "{title} est en cours de téléchargement.",
+    "alreadyDownloading": "{title} est déjà en cours de téléchargement.",
+    "noMatch": "Aucune source n’a encore {title}. Il reste recherché.",
+    "noSources": "Aucune source de téléchargement proposant des livres n’est activée (Paramètres → Téléchargement).",
+    "noLibrary": "Aucune bibliothèque Livres où le ranger. Créez-en une dans Paramètres → Bibliothèque.",
+    "unsupported": "Ce serveur est trop ancien pour télécharger des livres.",
+    "failed": "La recherche a échoué : {error}"
+  },
   "_shared": {
     "plugins": {
       "ebooks": {

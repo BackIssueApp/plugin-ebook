@@ -124,6 +124,35 @@
     "bookTag": "Libro",
     "by": "di"
   },
+  "wanted": {
+    "tab": "Libri",
+    "loading": "Caricamento…",
+    "loadFailed": "Impossibile caricare l’elenco dei titoli cercati.",
+    "emptyTitle": "Niente da cercare",
+    "empty": "I titoli aggiunti dal catalogo con + Aggiungi restano qui finché una fonte non li consegna.",
+    "count": {
+      "one": "{n} libro cercato.",
+      "other": "{n} libri cercati."
+    },
+    "schedule": "Ognuno viene cercato di nuovo secondo la pianificazione «Recupera i libri mancanti».",
+    "added": "Aggiunto il {date}",
+    "tried": "Ultima ricerca il {date}",
+    "triedFailed": "Ultima ricerca il {date}: {outcome}",
+    "notTried": "Non ancora cercato",
+    "searchNow": "Cerca ora",
+    "searching": "Ricerca…",
+    "cancel": "Annulla",
+    "cancelled": "{title} non è più cercato.",
+    "cancelFailed": "Impossibile annullare: {error}",
+    "inLibrary": "{title} è nella libreria.",
+    "downloading": "{title} è in download.",
+    "alreadyDownloading": "{title} è già in download.",
+    "noMatch": "Nessuna fonte ha ancora {title}. Resta cercato.",
+    "noSources": "Nessuna fonte di download con libri è attiva (Impostazioni → Download).",
+    "noLibrary": "Non c’è una libreria di libri in cui archiviarlo. Creane una in Impostazioni → Libreria.",
+    "unsupported": "Questo server è troppo vecchio per scaricare libri.",
+    "failed": "La ricerca non è riuscita: {error}"
+  },
   "_shared": {
     "plugins": {
       "ebooks": {

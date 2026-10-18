@@ -124,6 +124,35 @@
     "bookTag": "Libro",
     "by": "de"
   },
+  "wanted": {
+    "tab": "Libros",
+    "loading": "Cargando…",
+    "loadFailed": "No se pudo cargar la lista de buscados.",
+    "emptyTitle": "Nada buscado",
+    "empty": "Los títulos que añades desde el catálogo con + Añadir aparecen aquí hasta que una fuente los entrega.",
+    "count": {
+      "one": "{n} libro buscado.",
+      "other": "{n} libros buscados."
+    },
+    "schedule": "Cada uno se vuelve a buscar según la programación «Conseguir los libros pendientes».",
+    "added": "Añadido el {date}",
+    "tried": "Última búsqueda el {date}",
+    "triedFailed": "Última búsqueda el {date}: {outcome}",
+    "notTried": "Aún no se ha buscado",
+    "searchNow": "Buscar ahora",
+    "searching": "Buscando…",
+    "cancel": "Cancelar",
+    "cancelled": "{title} ya no se busca.",
+    "cancelFailed": "No se pudo cancelar: {error}",
+    "inLibrary": "{title} está en la biblioteca.",
+    "downloading": "{title} se está descargando.",
+    "alreadyDownloading": "{title} ya se está descargando.",
+    "noMatch": "Ninguna fuente tiene {title} todavía. Sigue buscado.",
+    "noSources": "No hay activada ninguna fuente de descarga con libros (Ajustes → Descargas).",
+    "noLibrary": "No hay ninguna biblioteca de libros donde guardarlo. Crea una en Ajustes → Biblioteca.",
+    "unsupported": "Este servidor es demasiado antiguo para descargar libros.",
+    "failed": "La búsqueda falló: {error}"
+  },
   "_shared": {
     "plugins": {
       "ebooks": {

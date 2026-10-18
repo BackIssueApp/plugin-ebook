@@ -123,6 +123,34 @@
     "bookTag": "图书",
     "by": "作者："
   },
+  "wanted": {
+    "tab": "图书",
+    "loading": "加载中…",
+    "loadFailed": "无法加载想要的列表。",
+    "emptyTitle": "没有想要的作品",
+    "empty": "用“+ 添加”从目录添加的作品会显示在这里，直到有来源提供它们。",
+    "count": {
+      "other": "想要 {n} 本图书。"
+    },
+    "schedule": "每一项都会按“补齐缺失的图书”计划再次搜索。",
+    "added": "添加于 {date}",
+    "tried": "上次搜索：{date}",
+    "triedFailed": "上次搜索：{date}（{outcome}）",
+    "notTried": "尚未搜索",
+    "searchNow": "立即搜索",
+    "searching": "搜索中…",
+    "cancel": "取消",
+    "cancelled": "已不再想要 {title}。",
+    "cancelFailed": "无法取消：{error}",
+    "inLibrary": "{title} 已在书库中。",
+    "downloading": "{title} 正在下载。",
+    "alreadyDownloading": "{title} 已在下载中。",
+    "noMatch": "还没有来源提供 {title}，它会继续保留在想要列表中。",
+    "noSources": "没有开启提供图书的下载来源（设置 → 下载）。",
+    "noLibrary": "没有可存放的图书书库。请在 设置 → 书库 中创建一个。",
+    "unsupported": "此服务器版本过旧，无法下载图书。",
+    "failed": "搜索失败：{error}"
+  },
   "_shared": {
     "plugins": {
       "ebooks": {
