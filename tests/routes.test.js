@@ -131,6 +131,17 @@ test('routes: books ride the normal collection; viewer reads + own progress; cur
       const stA = await (await fetch(`${base}/api/ebooks/state`, { headers: A })).json();
       assert.equal(stA.states[issue.id], undefined, 'admin has their own (empty) progress');
 
+      // The home page's Continue reading rail: a status-only filter that this
+      // plugin answers itself (no Shelves plugin is loaded here), per user.
+      const libId = db.prepare("SELECT id FROM libraries WHERE type='ebook'").get().id;
+      const rail = async (status, H) => {
+        const r = await (await fetch(`${base}/api/collection?library=${libId}&limit=15&offset=0&counts=0&facet=${encodeURIComponent(JSON.stringify({ status }))}`, { headers: H })).json();
+        return (r.rows || r).map((x) => x.id);
+      };
+      assert.deepEqual(await rail('reading', V), [book.id], 'a book mid-read is on the rail');
+      assert.deepEqual(await rail('reading', A), [], 'another user has not started it');
+      assert.deepEqual(await rail('unread', A), [book.id]);
+
       // fraction-only writes (the sheet's Mark finished/unread): locator null
       // must be accepted and clear the saved position.
       const markPost = await fetch(`${base}/api/ebooks/issue/${issue.id}/progress`, {
@@ -140,6 +151,8 @@ test('routes: books ride the normal collection; viewer reads + own progress; cur
       const marked = await (await fetch(`${base}/api/ebooks/issue/${issue.id}/progress`, { headers: V })).json();
       assert.equal(marked.progress.fraction, 1);
       assert.equal(marked.progress.locator, null);
+      assert.deepEqual(await rail('reading', V), [], 'a finished book leaves the rail');
+      assert.deepEqual(await rail('finished', V), [book.id]);
 
       // details: the sheet's grid fields (plugin-private columns) ride a
       // viewer-accessible route keyed by issue id

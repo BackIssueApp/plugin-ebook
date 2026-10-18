@@ -100,6 +100,32 @@ export default function register(api) {
   // Creating/editing a Books library indexes it right away (same UX as comic
   // libraries) instead of waiting out the scheduled scan.
   api.registerLibraryScanner?.({ type: 'ebook', scan: () => runScan() });
+
+  // A status-only Library filter ({"status":"reading"} — the home page's
+  // Continue reading rail) answered here, so it works without the Shelves plugin.
+  // Anything richer (authors, decades, formats) is left to Shelves. Only for
+  // ebook libraries; elsewhere it answers nothing and another resolver runs.
+  api.registerCollectionFilter?.({
+    id: 'ebooks-status',
+    resolve(selection, ctx) {
+      const s = selection || {};
+      const status = s.status;
+      if (!['reading', 'finished', 'unread'].includes(status)) return null;
+      if (Object.keys(s).some((k) => k !== 'status' && (Array.isArray(s[k]) ? s[k].length : s[k] != null))) return null;
+      const db = ctx?.db; const libraryId = Number(ctx?.library);
+      if (!db || !libraryId) return null;
+      const lib = db.prepare('SELECT type FROM libraries WHERE id=?').get(libraryId);
+      if (lib?.type !== 'ebook') return null;
+      const st = `CASE WHEN p.fraction >= 0.99 THEN 'finished' WHEN p.fraction > 0 THEN 'reading' ELSE 'unread' END`;
+      const started = db.prepare(`SELECT i.series_id id, MAX(${st} = 'finished') fin, MAX(${st} = 'reading') rd
+        FROM ebooks_progress p JOIN issues i ON i.id = p.issue_id JOIN series s ON s.id = i.series_id
+        WHERE p.user_id = ? AND s.library_id = ? GROUP BY i.series_id`).all(ctx.userId || 0, libraryId);
+      if (status === 'reading') return started.filter((r) => r.rd && !r.fin).map((r) => r.id);
+      if (status === 'finished') return started.filter((r) => r.fin).map((r) => r.id);
+      const begun = new Set(started.filter((r) => r.rd || r.fin).map((r) => r.id));
+      return db.prepare('SELECT id FROM series WHERE library_id = ?').all(libraryId).map((r) => r.id).filter((id) => !begun.has(id));
+    },
+  });
   // Boot catch-up: a Books library with files on disk but nothing indexed
   // (created before this scanner existed, or before a restart beat the first
   // scheduled run) scans shortly after startup. Also fires when indexed books

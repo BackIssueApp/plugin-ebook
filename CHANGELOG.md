@@ -8,6 +8,12 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Continue reading shows only books in progress.** The home page rail no
+  longer needs the Shelves plugin to tell started books from the rest. Without
+  it, the rail listed the whole Books library.
+
 ## [0.3.0] — 2026-10-17
 
 ### Added
