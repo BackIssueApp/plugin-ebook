@@ -45,7 +45,7 @@ test('routes: books ride the normal collection; viewer reads + own progress; cur
     // Register the plugin (it opens its store on config.dbPath) and boot core.
     const registerEbooks = (await import('../index.js')).default;
     registerEbooks(pluginApi);
-    const app = createApp({
+    const app = createApp({ openApiBeforeSetup: true,
       db, state: { queue: {} },
       getSettings: () => ({}), saveSettings: (b) => b,
       prepareRedownload: async () => {}, runDownloads: async () => {},
