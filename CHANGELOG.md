@@ -10,6 +10,11 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ### Fixed
 
+- **Remote catalogs keep updating after the first full sync.** Once a sync had
+  walked every page, later runs started past the end and found nothing, so
+  books the source added afterwards never appeared. A run now starts again
+  from the first page. A book the source still lists but can no longer serve
+  is not brought back.
 - **Continue reading shows only books in progress.** The home page rail no
   longer needs the Shelves plugin to tell started books from the rest. Without
   it, the rail listed the whole Books library.

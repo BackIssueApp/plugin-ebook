@@ -90,25 +90,45 @@ export async function runRemoteSync({
   // gone (404), drop it — otherwise the shelf shows the same book twice, one
   // of them dead. Sources without a probe keep both.
   const isGone = (r) => r?.status === 404 || r?.status === 410;
+  // Returns true when the NEW entry itself turned out dead and was undone:
+  // a source can keep listing a record whose file is gone, and walking from
+  // page 1 again would otherwise bring back one pruned earlier.
   const pruneDeadTwins = async (src, remoteId) => {
-    if (typeof src.probe !== 'function' || typeof store.duplicateRemoteEntries !== 'function') return;
-    for (const twin of store.duplicateRemoteEntries(src.id, remoteId)) {
+    if (typeof src.probe !== 'function' || typeof store.duplicateRemoteEntries !== 'function') return false;
+    const twins = store.duplicateRemoteEntries(src.id, remoteId);
+    for (const twin of twins) {
       try { if (isGone(await src.probe(null, twin.remote_id))) { if (store.removeRemoteEntry(twin.issue_id)) remoteSyncState.pruned++; } }
       catch { /* source unreachable right now: leave the twin alone */ }
     }
+    if (!twins.length) return false;
+    try {
+      if (!isGone(await src.probe(null, remoteId))) return false;
+      const self = store.db.prepare('SELECT issue_id FROM ebooks_files WHERE source=? AND remote_id=?').get(src.id, String(remoteId));
+      return !!(self && store.removeRemoteEntry(self.issue_id));
+    } catch { return false; }
   };
   try {
     for (const src of chosen) {
       if (stopRequested()) break;
       let page = resetCursor ? 1 : Math.max(1, Number(store.remoteCursor(src.id)) || 1);
       let totalPages = Infinity;
+      // A finished walk leaves the cursor past the last page, and a source that
+      // lists newest-first puts new books on page 1, behind it. So a run that
+      // starts past the end wraps around once and walks from page 1 again
+      // (cataloging is idempotent, so known books only update).
+      let wrapped = false;
+      let pagesSeen = 0;
       while (page <= totalPages && !stopRequested()) {
         remoteSyncState.page = page;
         const res = await src.listPage(null, page); // the source reads its own config
         const books = Array.isArray(res?.books) ? res.books : [];
         if (res?.total) remoteSyncState.total = res.total;
         if (res?.totalPages) totalPages = res.totalPages;
-        if (!books.length) break; // ran off the end
+        if (!books.length) {
+          if (!wrapped && pagesSeen === 0 && page > 1) { wrapped = true; page = 1; totalPages = Infinity; continue; }
+          break; // ran off the end
+        }
+        pagesSeen++;
 
         let interrupted = false;
         for (const b of books) {
@@ -122,7 +142,10 @@ export async function runRemoteSync({
           remoteSyncState.current = { remote_id: b.remote_id, title: b.title || String(b.remote_id) };
           try {
             const { created } = store.catalogRemote({ libraryId: lib.id, source: src.id, remoteId: b.remote_id, meta: b });
-            if (created) { remoteSyncState.created++; claimed++; await pruneDeadTwins(src, b.remote_id); } else remoteSyncState.updated++;
+            if (created) {
+              if (await pruneDeadTwins(src, b.remote_id)) continue; // a dead record: undone, counts as nothing
+              remoteSyncState.created++; claimed++;
+            } else remoteSyncState.updated++;
             remoteSyncState.done++;
           } catch (e) {
             remoteSyncState.error = String(e?.message || e); // one bad entry never aborts the run

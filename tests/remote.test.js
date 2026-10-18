@@ -410,3 +410,20 @@ test('a new copy of a book prunes an older copy the source can no longer serve; 
   assert.deepEqual(ids(), ['dup-b', 'new-a']);
   rm();
 });
+
+test('remote sync: once a walk has finished, the next run starts again from page 1 and finds new books', async () => {
+  const { store, rm } = setup();
+  try {
+    let pages = [[meta('w1'), meta('w2')], [meta('w3')]];
+    const calls = [];
+    const src = { id: 'wrap', async listPage(_config, page) { calls.push(page); return { books: pages[page - 1] || [], page, totalPages: pages.length, total: 3 }; } };
+    await runRemoteSync({ store, sources: [src] });
+    assert.equal(remoteSyncStatus().created, 3);
+    pages = [[meta('w4'), meta('w1')], [meta('w2'), meta('w3')]]; // a new book, listed first
+    calls.length = 0;
+    await runRemoteSync({ store, sources: [src] });
+    assert.equal(remoteSyncStatus().created, 1, 'the new book is found');
+    assert.equal(calls[0], 3, 'it started past the end');
+    assert.ok(calls.includes(1), 'then wrapped to page 1');
+  } finally { rm(); }
+});
