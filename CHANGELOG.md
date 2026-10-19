@@ -8,6 +8,8 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-10-18
+
 ### Added
 
 - **Wanted books have a screen.** The Wanted page gets a Books tab
