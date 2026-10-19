@@ -10,6 +10,9 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ### Changed
 
+- **"Unread" on the home page stays light in big libraries.** With BackIssue
+  0.9.3 or later, the Unread filter sends the books you've started instead of
+  every book you haven't. Older versions get the full list, as before.
 - **Rescans don't hold up the server.** Checking whether each book changed
   used to stat every file one after another without a break, which on
   network storage could freeze the app for the length of the scan. Files

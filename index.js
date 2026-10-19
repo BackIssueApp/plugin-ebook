@@ -122,8 +122,12 @@ export default function register(api) {
         WHERE p.user_id = ? AND s.library_id = ? GROUP BY i.series_id`).all(ctx.userId || 0, libraryId);
       if (status === 'reading') return started.filter((r) => r.rd && !r.fin).map((r) => r.id);
       if (status === 'finished') return started.filter((r) => r.fin).map((r) => r.id);
-      const begun = new Set(started.filter((r) => r.rd || r.fin).map((r) => r.id));
-      return db.prepare('SELECT id FROM series WHERE library_id = ?').all(libraryId).map((r) => r.id).filter((id) => !begun.has(id));
+      const begun = started.filter((r) => r.rd || r.fin).map((r) => r.id);
+      // Unread = the library minus what's begun. A core that takes exclusions
+      // gets just the begun ids; older cores need every unread id listed.
+      if (ctx.canExclude) return { excludeIds: begun };
+      const begunSet = new Set(begun);
+      return db.prepare('SELECT id FROM series WHERE library_id = ?').all(libraryId).map((r) => r.id).filter((id) => !begunSet.has(id));
     },
   });
   // Boot catch-up: a Books library with files on disk but nothing indexed
