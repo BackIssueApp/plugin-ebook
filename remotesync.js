@@ -18,7 +18,7 @@
 // No source-specific knowledge lives here — everything is driven through the
 // generic hook, so the ebooks plugin stays free of Book Warehouse (or any other
 // source's) settings. Sources read their own config; callers pass null.
-import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import { ebookLibraries } from './scanner.js';
 
 // ---- Live run state (module singleton; one sync at a time) ------------------
@@ -130,28 +130,40 @@ export async function runRemoteSync({
         }
         pagesSeen++;
 
+        // The whole page is cataloged in ONE transaction (each book's own
+        // transaction nests as a savepoint, so one bad entry still rolls back
+        // alone): a commit per book was ~150k commits for a full catalog.
+        // The twin probes are network calls, so they run after the commit.
         let interrupted = false;
-        for (const b of books) {
-          if (stopRequested()) { interrupted = true; break; }
-          if (!b || b.remote_id == null) continue;
-          // Claim a slot against the cap BEFORE cataloging, counting only new
-          // entries — a re-sync that only updates existing rows is uncapped.
-          const wasNew = !store.db.prepare('SELECT 1 x FROM ebooks_files WHERE source=? AND remote_id=?')
-            .get(src.id, String(b.remote_id));
-          if (wasNew && cap > 0 && claimed >= cap) { interrupted = true; break; }
-          remoteSyncState.current = { remote_id: b.remote_id, title: b.title || String(b.remote_id) };
-          try {
-            const { created } = store.catalogRemote({ libraryId: lib.id, source: src.id, remoteId: b.remote_id, meta: b });
-            if (created) {
-              if (await pruneDeadTwins(src, b.remote_id)) continue; // a dead record: undone, counts as nothing
-              remoteSyncState.created++; claimed++;
-            } else remoteSyncState.updated++;
-            remoteSyncState.done++;
-          } catch (e) {
-            remoteSyncState.error = String(e?.message || e); // one bad entry never aborts the run
+        const fresh = [];
+        store.db.transaction(() => {
+          for (const b of books) {
+            if (stopRequested()) { interrupted = true; break; }
+            if (!b || b.remote_id == null) continue;
+            // Claim a slot against the cap BEFORE cataloging, counting only new
+            // entries — a re-sync that only updates existing rows is uncapped.
+            const wasNew = !store.db.prepare('SELECT 1 x FROM ebooks_files WHERE source=? AND remote_id=?')
+              .get(src.id, String(b.remote_id));
+            if (wasNew && cap > 0 && claimed >= cap) { interrupted = true; break; }
+            remoteSyncState.current = { remote_id: b.remote_id, title: b.title || String(b.remote_id) };
+            try {
+              const { created } = store.catalogRemote({ libraryId: lib.id, source: src.id, remoteId: b.remote_id, meta: b });
+              if (created) { fresh.push(b.remote_id); claimed++; }
+              else { remoteSyncState.updated++; remoteSyncState.done++; }
+            } catch (e) {
+              remoteSyncState.error = String(e?.message || e); // one bad entry never aborts the run
+            }
+            emit();
           }
-          emit();
+        })();
+        for (const remoteId of fresh) {
+          if (await pruneDeadTwins(src, remoteId)) { claimed--; continue; } // a dead record: undone, counts as nothing
+          remoteSyncState.created++; remoteSyncState.done++;
         }
+        if (fresh.length) emit();
+        // Let queued requests run between pages even when the source answers
+        // from a cache.
+        await new Promise((r) => setImmediate(r));
         // Advance the cursor only on a fully-consumed page (same rule as the
         // backfill runner): a mid-page stop/cap leaves it so the next run redoes
         // the page and the idempotent catalog absorbs the overlap.
@@ -192,6 +204,16 @@ export async function runRemoteSync({
 // One in-flight materialization per issue id, so simultaneous opens of the same
 // remote book share a single download instead of racing two into the folder.
 const inflight = new Map();
+// And a ceiling on downloads at once across every book: a shelf of covers
+// opened in a hurry must not start dozens of fetches into the library folder.
+const MAX_MATERIALIZE = 3;
+let active = 0;
+const waiting = [];
+async function materializeSlot(fn) {
+  if (active >= MAX_MATERIALIZE) await new Promise((r) => waiting.push(r));
+  active++;
+  try { return await fn(); } finally { active--; waiting.shift()?.(); }
+}
 
 // Download a file-less remote entry on demand and record where it landed.
 // `sources` is the registered list; the entry's `source`/`remoteId` pick the one
@@ -204,11 +226,11 @@ export function materializeOnRead({ store, sources = [], issueId, source, remote
   const job = (async () => {
     const src = sources.find((s) => s.id === source);
     if (!src) throw new Error(`the "${source}" book source is not available`);
-    const result = await src.materialize(null, remoteId, { libraryId, dbPath });
+    const result = await materializeSlot(() => src.materialize(null, remoteId, { libraryId, dbPath }));
     const p = result?.path;
     if (!p) throw new Error('the book source returned no file');
     let size = null; let mtime = null;
-    try { const st = fs.statSync(p); size = st.size; mtime = Math.round(st.mtimeMs); } catch { /* stat best-effort */ }
+    try { const st = await fsp.stat(p); size = st.size; mtime = Math.round(st.mtimeMs); } catch { /* stat best-effort */ }
     store.materializedPath(key, p, size, mtime);
     return { path: p, size, mtime };
   })();

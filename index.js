@@ -6,7 +6,7 @@
 // reading hangs off the standard per-issue actions — an in-browser EPUB shell
 // (vendored foliate-js engine) with per-user progress/resume, PDFs streaming
 // inline to the browser's own viewer. Not a download source.
-import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import config from '../../src/config.js';
 import { openEbooksStore } from './store.js';
@@ -160,6 +160,22 @@ export default function register(api) {
   config.ebooksWantedCron ??= '0 */4 * * *';
   config.ebooksWantedEnabled ??= true;
   registerCatalog({ api, store, getClients: matchClients, uid, CAN_USE, CAN_MANAGE });
+  // Book requests stat and read asynchronously: on network storage a blocking
+  // stat (or a 10-50 MB EPUB read for the outline) holds every other request.
+  const isFile = (p) => fsp.stat(p).then((st) => st.isFile(), () => false);
+  const outlineJobs = new Map(); // issueId → in-flight outline extraction
+  const outlineOnce = (issueId, p) => {
+    if (!outlineJobs.has(issueId)) {
+      outlineJobs.set(issueId, (async () => {
+        try {
+          const outline = await extractEpubOutline(await fsp.readFile(p));
+          store.saveOutline(issueId, outline);
+          return outline;
+        } catch { return null; }
+      })().finally(() => outlineJobs.delete(issueId)));
+    }
+    return outlineJobs.get(issueId);
+  };
   const fileOr404 = (req, res) => {
     const f = store.fileByIssue(Number(req.params.id));
     if (!f) res.status(404).json({ error: 'not an ebook issue' });
@@ -221,7 +237,7 @@ export default function register(api) {
   api.registerRoute('get', '/api/ebooks/issue/:id/file', async (req, res) => {
     const f = fileOr404(req, res);
     if (!f) return;
-    if (f.path && fs.existsSync(f.path)) return serveBookFile(req, res, f.format, f.path);
+    if (f.path && await isFile(f.path)) return serveBookFile(req, res, f.format, f.path);
     if (f.source && f.remote_id != null) {
       let result;
       try {
@@ -298,12 +314,7 @@ export default function register(api) {
     const f = fileOr404(req, res);
     if (!f) return;
     let outline = store.outline(f.issue_id);
-    if (!outline && f.format === 'epub' && f.path && fs.existsSync(f.path)) {
-      try {
-        outline = await extractEpubOutline(fs.readFileSync(f.path));
-        store.saveOutline(f.issue_id, outline);
-      } catch { outline = null; }
-    }
+    if (!outline && f.format === 'epub' && f.path) outline = await outlineOnce(f.issue_id, f.path);
     res.json({ details: {
       language: f.language, isbn: f.isbn, added: f.added_at, format: f.format, size: f.size,
       pages: outline?.pages ?? null, chapters: outline?.chapters ?? null,

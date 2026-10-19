@@ -8,6 +8,26 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Rescans don't hold up the server.** Checking whether each book changed
+  used to stat every file one after another without a break, which on
+  network storage could freeze the app for the length of the scan. Files
+  are now checked a few at a time in the background.
+- **Faster Add searches.** Working out which results are already on your
+  shelf took about a second per search on a large shelf; it now takes a few
+  milliseconds. It also no longer misses a book you have when many other
+  titles start with the same word. The first start after updating builds
+  the lookup indexes once, which takes a few seconds on a very large shelf.
+- **Remote catalog syncs are quicker and gentler.** A page of the catalog is
+  saved in one go instead of one book at a time, and other requests get a
+  turn between pages (a 3,000-book sync took about 3 seconds of frozen
+  server, now under 1 second in short steps).
+- At most three on-demand books download at once; more queue behind them.
+- Opening a book's details reads the file in the background for its chapter
+  list, and the file and progress requests no longer load the cover image
+  from the database or block on a file-system check.
+
 ## [0.4.0] — 2026-10-18
 
 ### Added

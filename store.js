@@ -172,6 +172,27 @@ export function openEbooksStore(dbPath) {
     CREATE INDEX IF NOT EXISTS idx_ebooks_files_twin ON ebooks_files (source, library_id, title_key);
     CREATE INDEX IF NOT EXISTS idx_ebooks_files_unavailable ON ebooks_files (source, unavailable_at);
   `);
+  // "Already on the shelf?" runs for every result of a catalog search. It was
+  // three scans per result (match id, a normalised ISBN, an issue-title LIKE),
+  // about a second per search on a big shelf. Each now probes an index: the
+  // ISBN one is on the very expression the lookup compares, and the title one
+  // on title_key — which local books now carry too (remote rows always did;
+  // the twin lookups only ever compare rows of one source, so local keys
+  // never meet them). The first time through, local rows get theirs.
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_ebooks_files_titlekey'").get()) {
+    try {
+      db.prepare(`UPDATE ebooks_files
+        SET title_key = (SELECT lower(trim(i.title)) FROM issues i WHERE i.id = ebooks_files.issue_id)
+        WHERE title_key IS NULL AND issue_id IS NOT NULL`).run();
+    } catch { /* no core issues table yet — so no rows to fill */ }
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_ebooks_files_titlekey ON ebooks_files (title_key);
+    CREATE INDEX IF NOT EXISTS idx_ebooks_files_match ON ebooks_files (match_id);
+    CREATE INDEX IF NOT EXISTS idx_ebooks_files_isbn ON ebooks_files (replace(replace(isbn,'-',''),' ',''));
+    -- Newest-first book lists (OPDS Recently added) walk this instead of sorting.
+    CREATE INDEX IF NOT EXISTS idx_ebooks_files_added ON ebooks_files (added_at, issue_id);
+  `);
   /** Fill title_key for a source's rows that predate the column (or lost it). */
   const ensureTitleKeys = (source) => {
     db.prepare(`UPDATE ebooks_files
@@ -183,9 +204,14 @@ export function openEbooksStore(dbPath) {
   const isStandalone = (seriesRow) => /^ebook:l\d+:b:/.test(String(seriesRow?.url || ''));
   const authorsOf = (seriesRow) => String(seriesRow?.publisher || '').split(',').map((a) => a.trim()).filter(Boolean);
 
-  /** File row + its catalog identity, for the routes. */
+  /** File row + its catalog identity, for the routes. Every column but the
+   *  embedded cover bytes and the outline JSON, which have their own getters —
+   *  this runs on each progress save and bookmark. */
+  const FILE_COLS = db.prepare("SELECT name FROM pragma_table_info('ebooks_files')").all()
+    .map((r) => r.name).filter((c) => c !== 'cover' && c !== 'outline_json')
+    .map((c) => `ef.${c}`).join(', ');
   function fileByIssue(issueId) {
-    return db.prepare(`SELECT ef.*, i.title, i.series_id AS core_series_id
+    return db.prepare(`SELECT ${FILE_COLS}, i.title, i.series_id AS core_series_id
       FROM ebooks_files ef JOIN issues i ON i.id = ef.issue_id WHERE ef.issue_id = ?`).get(Number(issueId)) || null;
   }
 
@@ -299,17 +325,20 @@ export function openEbooksStore(dbPath) {
           page_count: null, has_metadata: 1, valid: 1, error: null, verified: 0,
         });
         linkLibraryFile(db, p, seriesId, issueId);
+        // title_key follows the title for local rows; a materialized remote
+        // row keeps the source's title (its twin lookups compare that).
         db.prepare(`INSERT INTO ebooks_files
-            (path, library_id, series_id, issue_id, format, size, mtime, title_source, isbn, language, cover, cover_type, added_at)
-          VALUES (@path, @lib, @sid, @iid, @format, @size, @mtime, @title_source, @isbn, @language, @cover, @cover_type, strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+            (path, library_id, series_id, issue_id, format, size, mtime, title_source, isbn, language, cover, cover_type, added_at, title_key)
+          VALUES (@path, @lib, @sid, @iid, @format, @size, @mtime, @title_source, @isbn, @language, @cover, @cover_type, strftime('%Y-%m-%dT%H:%M:%SZ','now'), lower(trim(@title)))
           ON CONFLICT(path) DO UPDATE SET
             library_id=excluded.library_id, series_id=excluded.series_id, issue_id=excluded.issue_id,
             format=excluded.format, size=excluded.size, mtime=excluded.mtime,
             title_source=excluded.title_source, isbn=COALESCE(excluded.isbn, ebooks_files.isbn),
             language=COALESCE(excluded.language, ebooks_files.language),
-            cover=excluded.cover, cover_type=excluded.cover_type`)
+            cover=excluded.cover, cover_type=excluded.cover_type,
+            title_key=CASE WHEN ebooks_files.source IS NULL THEN excluded.title_key ELSE ebooks_files.title_key END`)
           .run({
-            path: p, lib: libraryId, sid: seriesId, iid: issueId, format, size, mtime,
+            path: p, lib: libraryId, sid: seriesId, iid: issueId, format, size, mtime, title: issueTitle,
             title_source: meta.title_source || null, isbn: meta.isbn || null, language: meta.language || null,
             cover: meta.cover || null, cover_type: meta.cover_type || null,
           });
@@ -674,7 +703,7 @@ export function openEbooksStore(dbPath) {
         let adopted = 0;
         for (const r of db.prepare('SELECT issue_id, path, size, mtime FROM ebooks_files WHERE source=? AND path IS NOT NULL AND issue_id IS NOT NULL').all(src)) {
           if (!fs.existsSync(r.path)) { db.prepare('UPDATE ebooks_files SET path=NULL WHERE issue_id=?').run(r.issue_id); continue; }
-          db.prepare('UPDATE ebooks_files SET source=NULL, remote_id=NULL, title_key=NULL, unavailable_at=NULL, unavailable_reason=NULL WHERE issue_id=?').run(r.issue_id);
+          db.prepare('UPDATE ebooks_files SET source=NULL, remote_id=NULL, unavailable_at=NULL, unavailable_reason=NULL WHERE issue_id=?').run(r.issue_id);
           db.prepare('UPDATE issues SET url=?, file_path=? WHERE id=?').run(issueUrlFor(r.path), r.path, r.issue_id);
           ownFile(r.issue_id, r.path, r.size, r.mtime);
           adopted++;
@@ -701,8 +730,9 @@ export function openEbooksStore(dbPath) {
         return i ? { issueId: i.id, seriesId: i.series_id } : null;
       };
       const cleanIsbn = String(isbn || '').replace(/[\s-]/g, '') || null;
-      const byKey = db.prepare(`SELECT f.issue_id FROM ebooks_files f WHERE f.issue_id IS NOT NULL AND ((@mid IS NOT NULL AND f.match_id = @mid) OR (@isbn IS NOT NULL AND replace(replace(f.isbn,'-',''),' ','') = @isbn)) LIMIT 1`)
-        .get({ mid: matchId != null ? String(matchId) : null, isbn: cleanIsbn });
+      // Two probes rather than one OR — an OR of optional terms defeats both indexes.
+      const byKey = (matchId != null && db.prepare('SELECT issue_id FROM ebooks_files WHERE match_id = ? AND issue_id IS NOT NULL LIMIT 1').get(String(matchId)))
+        || (cleanIsbn && db.prepare(`SELECT issue_id FROM ebooks_files WHERE replace(replace(isbn,'-',''),' ','') = ? AND issue_id IS NOT NULL LIMIT 1`).get(cleanIsbn));
       if (byKey) { const f = found(byKey.issue_id); if (f) return f; }
       if (!title) return null;
       const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -711,14 +741,23 @@ export function openEbooksStore(dbPath) {
       // by their key: the part before a subtitle, with bracketed notes dropped.
       const key = titleKey(title);
       if (!key) return null;
-      const rows = db.prepare(`SELECT f.issue_id, i.title, s.publisher FROM ebooks_files f
-          JOIN issues i ON i.id = f.issue_id JOIN series s ON s.id = i.series_id
-         WHERE lower(i.title) LIKE ? LIMIT 40`).all(key.split(' ')[0] + '%');
+      // Candidates: books whose title starts with the key's first word — a
+      // range on idx_ebooks_files_titlekey, walked until a real match (not
+      // just the first 40 sharing a common first word, which could miss it).
+      const first = key.split(' ')[0];
       const a = norm(author);
       const last = a.split(' ').pop();
-      const hit = rows.find((r) => titleKey(r.title) === key
-        && (!a || !r.publisher || norm(r.publisher).includes(a) || a.includes(norm(r.publisher)) || (last && norm(r.publisher).includes(last))));
-      return hit ? found(hit.issue_id) : null;
+      const candidates = db.prepare(`SELECT f.issue_id, i.title, s.publisher FROM ebooks_files f
+          JOIN issues i ON i.id = f.issue_id JOIN series s ON s.id = i.series_id
+         WHERE f.title_key >= ? AND f.title_key < ? LIMIT 5000`).iterate(first, first + String.fromCodePoint(0x10ffff));
+      for (const r of candidates) {
+        if (titleKey(r.title) === key
+          && (!a || !r.publisher || norm(r.publisher).includes(a) || a.includes(norm(r.publisher)) || (last && norm(r.publisher).includes(last)))) {
+          candidates.return();
+          return found(r.issue_id);
+        }
+      }
+      return null;
     },
 
     /** Want a catalog book: one row per catalog id (asking again refreshes it). */
@@ -775,6 +814,7 @@ export function openEbooksStore(dbPath) {
       const tx = db.transaction(() => {
         if (merged.title) {
           db.prepare('UPDATE issues SET title=? WHERE id=?').run(merged.title, issueId);
+          db.prepare('UPDATE ebooks_files SET title_key=lower(trim(?)) WHERE issue_id=? AND source IS NULL').run(merged.title, issueId);
           if (standalone) db.prepare('UPDATE series SET title=? WHERE id=?').run(merged.title, series.id);
         }
         if (Array.isArray(merged.authors) && merged.authors.length && !series.publisher) {

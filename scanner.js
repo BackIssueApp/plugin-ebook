@@ -4,7 +4,6 @@
 // same way comic scans prune. Incremental: a file whose path+mtime+size
 // already matches its row (and whose catalog rows are still intact) is
 // skipped without opening it, so rescans of a big shelf are cheap.
-import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { libraryFolders } from '../../src/db.js';
@@ -54,6 +53,25 @@ export async function walkEbooks(folder) {
   return out;
 }
 
+// Files are stat'ed a few at a time, asynchronously: a rescan of an unchanged
+// library is mostly stats, and on network storage a synchronous stat per file
+// held the whole server for the length of the scan.
+const STAT_BATCH = 8;
+/** stat(files[i]), fetched STAT_BATCH at a time just ahead of the loop. */
+export function batchedStat(files, size = STAT_BATCH) {
+  let base = -1, batch = null;
+  return async (i) => {
+    const b = i - (i % size);
+    if (b !== base) {
+      base = b;
+      batch = Promise.all(files.slice(b, b + size).map((f) => fsp.stat(f).catch((e) => e)));
+    }
+    const st = (await batch)[i - b];
+    if (st instanceof Error) throw st;
+    return st;
+  };
+}
+
 // Shared scan state for the status endpoint (one scan at a time).
 export const scanState = {
   running: false, done: 0, total: 0, added: 0, updated: 0, removed: 0,
@@ -79,10 +97,12 @@ export async function scanLibraries({ store, log = console.log }) {
     for (const { lib, files } of work) {
       const known = store.pathIndex(lib.id);
       const seen = new Set();
-      for (const file of files) {
+      const statOf = batchedStat(files);
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
         seen.add(file);
         try {
-          const st = fs.statSync(file);
+          const st = await statOf(i);
           const mtime = Math.round(st.mtimeMs);
           const prev = known.get(file);
           // Unchanged AND still cataloged → skip without opening the file. A
