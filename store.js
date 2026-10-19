@@ -178,14 +178,18 @@ export function openEbooksStore(dbPath) {
   // ISBN one is on the very expression the lookup compares, and the title one
   // on title_key — which local books now carry too (remote rows always did;
   // the twin lookups only ever compare rows of one source, so local keys
-  // never meet them). The first time through, local rows get theirs.
-  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_ebooks_files_titlekey'").get()) {
+  // never meet them).
+  // Rows without a key (written before this, or by an older version since) get
+  // one on open: a table scan the first time, then a probe of the new index.
+  const keyIndexed = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_ebooks_files_titlekey'").get();
+  const fillTitleKeys = () => {
     try {
       db.prepare(`UPDATE ebooks_files
         SET title_key = (SELECT lower(trim(i.title)) FROM issues i WHERE i.id = ebooks_files.issue_id)
         WHERE title_key IS NULL AND issue_id IS NOT NULL`).run();
     } catch { /* no core issues table yet — so no rows to fill */ }
-  }
+  };
+  if (!keyIndexed) fillTitleKeys();
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_ebooks_files_titlekey ON ebooks_files (title_key);
     CREATE INDEX IF NOT EXISTS idx_ebooks_files_match ON ebooks_files (match_id);
@@ -193,6 +197,7 @@ export function openEbooksStore(dbPath) {
     -- Newest-first book lists (OPDS Recently added) walk this instead of sorting.
     CREATE INDEX IF NOT EXISTS idx_ebooks_files_added ON ebooks_files (added_at, issue_id);
   `);
+  if (keyIndexed) fillTitleKeys();
   /** Fill title_key for a source's rows that predate the column (or lost it). */
   const ensureTitleKeys = (source) => {
     db.prepare(`UPDATE ebooks_files
