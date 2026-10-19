@@ -8,6 +8,8 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-19
+
 ### Changed
 
 - **"Unread" on the home page stays light in big libraries.** With BackIssue
