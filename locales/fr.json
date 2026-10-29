@@ -47,7 +47,8 @@
     "serverAnswered": "le serveur a répondu {status}",
     "openFailed": "Impossible d’ouvrir ce livre : {reason}.",
     "openOtherCopy": "Ouvrir plutôt la copie {format}",
-    "noContents": "Aucun sommaire."
+    "noContents": "Aucun sommaire.",
+    "resumedFrom": "Reprise à {pct} % depuis {device}"
   },
   "bookmarks": {
     "nothingYet": "Rien à marquer pour l’instant — tournez d’abord une page.",

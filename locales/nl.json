@@ -47,7 +47,8 @@
     "serverAnswered": "de server antwoordde {status}",
     "openFailed": "Dit boek kon niet worden geopend: {reason}.",
     "openOtherCopy": "In plaats daarvan de {format}-versie openen",
-    "noContents": "Geen inhoudsopgave."
+    "noContents": "Geen inhoudsopgave.",
+    "resumedFrom": "Hervat op {pct}% vanaf {device}"
   },
   "bookmarks": {
     "nothingYet": "Nog niets om te markeren — sla eerst een pagina om.",

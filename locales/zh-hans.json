@@ -47,7 +47,8 @@
     "serverAnswered": "服务器返回 {status}",
     "openFailed": "无法打开此书：{reason}。",
     "openOtherCopy": "改为打开 {format} 版本",
-    "noContents": "没有目录。"
+    "noContents": "没有目录。",
+    "resumedFrom": "已从 {device} 的 {pct}% 处继续"
   },
   "bookmarks": {
     "nothingYet": "还没有可添加书签的位置——请先翻一页。",

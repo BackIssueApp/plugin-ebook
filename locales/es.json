@@ -47,7 +47,8 @@
     "serverAnswered": "el servidor respondió {status}",
     "openFailed": "No se pudo abrir este libro: {reason}.",
     "openOtherCopy": "Abrir la copia {format} en su lugar",
-    "noContents": "No hay índice."
+    "noContents": "No hay índice.",
+    "resumedFrom": "Retomado al {pct} % desde {device}"
   },
   "bookmarks": {
     "nothingYet": "Aún no hay nada que marcar: pasa primero una página.",

@@ -492,8 +492,10 @@
         // left (KOReader on an e-reader) has only a fraction: land there,
         // within a page or so. A book never opened starts at the beginning.
         if (prog && prog.locator) await view.init({ lastLocation: prog.locator });
-        else if (prog && prog.fraction > 0 && prog.fraction < 1) await view.goToFraction(prog.fraction).catch(() => view.renderer.next());
-        else view.renderer.next();
+        else if (prog && prog.fraction > 0 && prog.fraction < 1) {
+          await view.goToFraction(prog.fraction).catch(() => view.renderer.next());
+          if (prog.device) api.toast(tr('reader.resumedFrom', 'Resumed at {pct}% from {device}', { pct: Math.round(prog.fraction * 100), device: prog.device }), 'info');
+        } else view.renderer.next();
       } catch (e) {
         // Say why — and when another copy of the same title on this shelf
         // still opens, offer it right there.
@@ -663,10 +665,17 @@
         row.className = 'ebr__mark';
         const go = document.createElement('button');
         go.className = 'ebr__mark-go';
-        go.textContent = Math.round((m.fraction || 0) * 100) + '%' + (m.note ? ' · ' + m.note : '');
+        // A highlight carries its passage; a plain bookmark only its place.
+        const snippet = m.text ? ' · “' + (m.text.length > 90 ? m.text.slice(0, 90).trim() + '…' : m.text) + '”' : '';
+        go.textContent = Math.round((m.fraction || 0) * 100) + '%' + snippet + (m.note ? ' · ' + m.note : '');
         go.title = tr('bookmarks.jump', 'Jump to this bookmark');
         go.onclick = () => {
-          reader.view?.goTo(m.locator).catch(() => api.toast(tr('bookmarks.openFailed', 'That bookmark could not be opened.'), 'error'));
+          // A mark made on an e-reader has no CFI; its percentage still gets
+          // within a page or so.
+          const failed = () => api.toast(tr('bookmarks.openFailed', 'That bookmark could not be opened.'), 'error');
+          const byFraction = () => (m.fraction > 0 ? reader.view?.goToFraction(m.fraction).catch(failed) : failed());
+          if (/^koreader:/.test(m.locator || '')) byFraction();
+          else reader.view?.goTo(m.locator).catch(byFraction);
           reader.el.querySelector('.ebr__toc--marks').classList.remove('is-open');
         };
         const del = document.createElement('button');

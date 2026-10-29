@@ -47,7 +47,8 @@
     "serverAnswered": "der Server antwortete mit {status}",
     "openFailed": "Dieses Buch konnte nicht geöffnet werden: {reason}.",
     "openOtherCopy": "Stattdessen die {format}-Kopie öffnen",
-    "noContents": "Kein Inhaltsverzeichnis."
+    "noContents": "Kein Inhaltsverzeichnis.",
+    "resumedFrom": "Bei {pct} % von {device} fortgesetzt"
   },
   "bookmarks": {
     "nothingYet": "Noch nichts zu markieren — erst eine Seite umblättern.",

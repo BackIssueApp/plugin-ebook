@@ -162,6 +162,9 @@ export function openEbooksStore(dbPath) {
   if (!epCols.includes('chapter')) db.exec('ALTER TABLE ebooks_progress ADD COLUMN chapter TEXT');
   if (!epCols.includes('page')) db.exec('ALTER TABLE ebooks_progress ADD COLUMN page INTEGER');
   if (!epCols.includes('pages')) db.exec('ALTER TABLE ebooks_progress ADD COLUMN pages INTEGER');
+  // Which device left the position (an e-reader through the KOReader
+  // plugin); NULL when it was the web reader or an app.
+  if (!epCols.includes('device')) db.exec('ALTER TABLE ebooks_progress ADD COLUMN device TEXT');
   // The duplicate-twin lookups (remotesync) match remote entries by title.
   // Comparing issue titles across a join was a whole-table scan per lookup:
   // on a 159k-title remote catalog one lookup took minutes of blocked main
@@ -547,21 +550,24 @@ export function openEbooksStore(dbPath) {
     },
 
     progress(userId, issueId) {
-      return db.prepare('SELECT locator, fraction, updated_at, chapter, page, pages FROM ebooks_progress WHERE user_id=? AND issue_id=?')
-        .get(userId, issueId) || { locator: null, fraction: 0, updated_at: null, chapter: null, page: null, pages: null };
+      return db.prepare('SELECT locator, fraction, updated_at, chapter, page, pages, device FROM ebooks_progress WHERE user_id=? AND issue_id=?')
+        .get(userId, issueId) || { locator: null, fraction: 0, updated_at: null, chapter: null, page: null, pages: null, device: null };
     },
     // chapter/page/pages are optional: a client that only knows the locator
     // still saves, and a client that knows more makes the resume card richer.
-    saveProgress(userId, issueId, { locator, fraction, chapter, page, pages }) {
+    // `device` names an e-reader that left the position; the web reader and
+    // the apps leave it unset.
+    saveProgress(userId, issueId, { locator, fraction, chapter, page, pages, device }) {
       const int = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : null);
-      db.prepare(`INSERT INTO ebooks_progress (user_id, issue_id, locator, fraction, updated_at, chapter, page, pages)
-        VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ','now'), ?, ?, ?)
+      db.prepare(`INSERT INTO ebooks_progress (user_id, issue_id, locator, fraction, updated_at, chapter, page, pages, device)
+        VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ','now'), ?, ?, ?, ?)
         ON CONFLICT(user_id, issue_id) DO UPDATE SET
           locator = excluded.locator, fraction = excluded.fraction, updated_at = excluded.updated_at,
-          chapter = excluded.chapter, page = excluded.page, pages = excluded.pages`)
+          chapter = excluded.chapter, page = excluded.page, pages = excluded.pages, device = excluded.device`)
         .run(userId, issueId, locator == null ? null : String(locator),
           Math.min(1, Math.max(0, Number(fraction) || 0)),
-          chapter ? String(chapter).slice(0, 200) : null, int(page), int(pages));
+          chapter ? String(chapter).slice(0, 200) : null, int(page), int(pages),
+          device ? String(device).slice(0, 100) : null);
     },
     /** The cached outline for a book, or null when it hasn't been derived yet. */
     outline(issueId) {

@@ -47,7 +47,8 @@
     "serverAnswered": "serwer odpowiedział {status}",
     "openFailed": "Nie udało się otworzyć tej książki: {reason}.",
     "openOtherCopy": "Otwórz zamiast tego kopię {format}",
-    "noContents": "Brak spisu treści."
+    "noContents": "Brak spisu treści.",
+    "resumedFrom": "Wznowiono od {pct}% z urządzenia {device}"
   },
   "bookmarks": {
     "nothingYet": "Nie ma jeszcze czego zapisać — najpierw przewróć stronę.",

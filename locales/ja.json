@@ -47,7 +47,8 @@
     "serverAnswered": "サーバーの応答：{status}",
     "openFailed": "この書籍を開けませんでした：{reason}。",
     "openOtherCopy": "代わりに {format} 版を開く",
-    "noContents": "目次がありません。"
+    "noContents": "目次がありません。",
+    "resumedFrom": "{device} の位置 {pct}% から再開しました"
   },
   "bookmarks": {
     "nothingYet": "まだブックマークできる位置がありません。先にページをめくってください。",

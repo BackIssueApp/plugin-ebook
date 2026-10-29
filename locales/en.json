@@ -47,7 +47,8 @@
     "serverAnswered": "the server answered {status}",
     "openFailed": "Couldn’t open this book: {reason}.",
     "openOtherCopy": "Open the {format} copy instead",
-    "noContents": "No contents listing."
+    "noContents": "No contents listing.",
+    "resumedFrom": "Resumed at {pct}% from {device}"
   },
   "bookmarks": {
     "nothingYet": "Nothing to bookmark yet — turn a page first.",

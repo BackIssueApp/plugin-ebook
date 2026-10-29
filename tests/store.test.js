@@ -120,7 +120,7 @@ test('progress: per-user upsert with clamped fraction; stateMap feeds the row ic
   const { p, store, libId, rm } = setup();
   try {
     const { issueId } = store.catalogFile({ libraryId: libId, path: file(p, 'dune.epub'), format: 'epub', size: 100, mtime: 1, meta: DUNE });
-    assert.deepEqual(store.progress(1, issueId), { locator: null, fraction: 0, updated_at: null, chapter: null, page: null, pages: null });
+    assert.deepEqual(store.progress(1, issueId), { locator: null, fraction: 0, updated_at: null, chapter: null, page: null, pages: null, device: null });
     store.saveProgress(1, issueId, { locator: 'epubcfi(/6/4!/4/2)', fraction: 0.25 });
     store.saveProgress(1, issueId, { locator: 'epubcfi(/6/8!/4/2)', fraction: 1.7, chapter: 'Chapter 7', page: 142, pages: 312 });
     assert.equal(store.progress(1, issueId).locator, 'epubcfi(/6/8!/4/2)');

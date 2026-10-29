@@ -13,6 +13,12 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 - The web reader resumes by percentage when a book's saved place has no
   exact locator, as after reading on an e-reader with the KOReader plugin,
   instead of starting over from the first page.
+- A position left by an e-reader names the device: the reader says
+  "Resumed at 42% from Kobo" when it lands by percentage, and the progress
+  record carries `device` for the KOReader plugin to fill.
+- Highlights made on an e-reader appear in the bookmarks drawer with their
+  passage, and jumping to one goes by percentage when it has no exact
+  locator.
 
 ## [0.5.0] — 2026-10-19
 
