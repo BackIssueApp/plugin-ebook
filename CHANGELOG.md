@@ -8,6 +8,8 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-10-29
+
 ### Changed
 
 - The web reader resumes by percentage when a book's saved place has no
