@@ -488,9 +488,11 @@
         await view.open(file);
         applyEngineStyles();
         buildToc(view.book?.toc);
-        // Resume at the saved locator (a CFI); a book never opened starts at
-        // the beginning.
+        // Resume at the saved locator (a CFI). A position another reader
+        // left (KOReader on an e-reader) has only a fraction: land there,
+        // within a page or so. A book never opened starts at the beginning.
         if (prog && prog.locator) await view.init({ lastLocation: prog.locator });
+        else if (prog && prog.fraction > 0 && prog.fraction < 1) await view.goToFraction(prog.fraction).catch(() => view.renderer.next());
         else view.renderer.next();
       } catch (e) {
         // Say why — and when another copy of the same title on this shelf

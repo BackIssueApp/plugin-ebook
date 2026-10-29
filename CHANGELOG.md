@@ -8,6 +8,12 @@ by the maintainers when changes merge, so concurrent PRs don't conflict here.
 
 ## [Unreleased]
 
+### Changed
+
+- The web reader resumes by percentage when a book's saved place has no
+  exact locator, as after reading on an e-reader with the KOReader plugin,
+  instead of starting over from the first page.
+
 ## [0.5.0] — 2026-10-19
 
 ### Changed
